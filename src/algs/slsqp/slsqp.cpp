@@ -8,8 +8,16 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
+#include <time.h>
+#include <sstream>
+#include <omp.h>
 
 #include "slsqp.h"
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <algorithm>
 
 /*      ALGORITHM 733, COLLECTED ALGORITHMS FROM ACM. */
 /*      TRANSACTIONS ON MATHEMATICAL SOFTWARE, */
@@ -76,9 +84,33 @@ static void daxpy_sl__(int *n_, const double *da_, const double *dx,
 static double ddot_sl__(int *n_, double *dx, int incx, double *dy, int incy)
 {
      int n = *n_, i;
-     double sum = 0;
+     long double sum = 0;
      if (n <= 0) return 0;
      for (i = 0; i < n; ++i) sum += dx[i*incx] * dy[i*incy];
+     return (double) sum;
+}
+
+//#pragma omp parallel for num_threads(2)
+static double ddot_sl__using_tempMat(int *n_, double **temp_matrix, int incx, double *dy, int incy, int val)
+{
+     int n = *n_, i;
+     long double sum = 0;
+     if (n <= 0) return 0;
+
+     for (i = 0; i < n; ++i) sum += temp_matrix[incx][val + i] * dy[i*incy];
+     
+     return (double) sum;
+}
+
+static double ddot_sl__using_tempMat2(int *n_, double **temp_matrix, int incx, double *dy, int incy, int val)
+{
+     int n = *n_, i;
+     long double sum = 0;
+     if (n <= 0) return 0;
+
+     //#pragma omp parallel for num_threads(4)
+     for (i = 0; i < n; ++i) sum += temp_matrix[incx][val + i] * dy[i*incy];
+     
      return (double) sum;
 }
 
@@ -87,7 +119,7 @@ static double dnrm2___(int *n_, double *dx, int incx)
 {
      int i, n = *n_;
      double xmax = 0, scale;
-     double sum = 0;
+     long double sum = 0;
      for (i = 0; i < n; ++i) {
           double xabs = fabs(dx[incx*i]);
           if (xmax < xabs) xmax = xabs;
@@ -162,6 +194,147 @@ static const int c__2 = 2;
 #define MIN2(a,b) ((a) <= (b) ? (a) : (b))
 #define MAX2(a,b) ((a) >= (b) ? (a) : (b))
 
+static void h12_row_wise(const int *mode, int *lpivot, int *l1, 
+		 int *m, double *u, const int *iue, double *up, 
+		 double *c__, const int *ice, const int *icv, const int *ncv, int div)
+{
+    /* Initialized data */
+
+    const double one = 1.;
+
+    /* System generated locals */
+    int u_dim1, u_offset, i__1, i__2;
+    double d__1;
+
+    /* Local variables */
+    double b;
+    int i__, j, i2, i3, i4;
+    double cl, sm;
+    int incr;
+    double clinv;
+
+    /* Parameter adjustments */
+    u_dim1 = *iue;
+    u_offset = 1 + u_dim1;
+    u -= u_offset;
+    --c__;
+    
+    // Declare sm1 fot use in loop fusion
+    double sm1 = 0;
+    int i5 = 0;
+    
+    std::vector<int> idx;
+    std::vector<double> val;
+    std::size_t nnz = 0;
+
+    /* Function Body */
+    if (0 >= *lpivot || *lpivot >= *l1 || *l1 > *m) {
+	goto L80;
+    }
+    cl = (d__1 = u[*lpivot * u_dim1 + 1], fabs(d__1));
+    if (*mode == 2) {
+	goto L30;
+    }
+/*     ****** CONSTRUCT THE TRANSFORMATION ****** */
+    i__1 = *m;
+
+    for (j = *l1; j <= i__1; ++j) {
+	double temp_val = u[j * u_dim1 + 1];
+        if (j >= *l1 + div){
+            if (temp_val != 0.0){
+                idx.push_back(j * u_dim1 + 1);
+                val.push_back(temp_val);
+	        sm = (d__1 = temp_val, fabs(d__1));
+	        sm1 += temp_val * temp_val;
+                nnz++;
+            }
+        }
+        else{
+	    sm = (d__1 = temp_val, fabs(d__1));
+	    sm1 += temp_val * temp_val;
+        }
+	cl = MAX2(sm,cl);
+    }
+    if (cl <= 0.0) {
+	goto L80;
+    }
+    clinv = one / cl;
+/* Computing 2nd power */
+    d__1 = u[*lpivot * u_dim1 + 1] * clinv;
+    sm = d__1 * d__1;
+
+    sm += sm1 * clinv * clinv;
+    cl *= sqrt(sm);
+    if (u[*lpivot * u_dim1 + 1] > 0.0) {
+	cl = -cl;
+    }
+    *up = u[*lpivot * u_dim1 + 1] - cl;
+    u[*lpivot * u_dim1 + 1] = cl;
+    goto L40;
+/*     ****** APPLY THE TRANSFORMATION  I+U*(U**T)/B  TO C ****** */
+L30:
+    if (cl <= 0.0) {
+	goto L80;
+    }
+L40:
+    if (*ncv <= 0) {
+	goto L80;
+    }
+    b = *up * u[*lpivot * u_dim1 + 1];
+    if (b >= 0.0) {
+	goto L80;
+    }
+    b = one / b;
+    i2 = 1 - *icv + *ice * (*lpivot - 1);
+    incr = *ice * (*l1 - *lpivot);
+    i__1 = *ncv;
+    #pragma omp parallel for num_threads(10) private(i4, i__, i3, sm, i5) //schedule(dynamic, 50)
+    for (j = 1; j <= i__1; ++j) {
+	i5 = i2 + (*icv * j);
+	i3 = i5 + incr;
+	i4 = i3;
+	sm = c__[i5] * *up;
+	i__2 = *m;
+
+        // Dense reduction
+        for (i__ = *l1; i__ < *l1 +div; ++i__){
+	    sm += c__[i3] * u[i__ * u_dim1 + 1];
+	    i3 += *ice;
+        }
+        // Sparse reduction
+        for (int k = 0; k < idx.size(); k++){
+            int cidx = idx[k];
+            sm += c__[(cidx-1) + ((j-1)* *m)] * val[k];
+        }
+
+	if (sm == 0.0) {
+	    continue;
+	}
+	sm *= b;
+	c__[i5] += sm * *up;
+	i__2 = *m;
+
+        // Dense update
+        for (i__ = *l1; i__ < *l1 +div; ++i__){
+	    c__[i4] += sm * u[i__ * u_dim1 + 1];
+	    i4 += *ice;
+        }
+        // Sparse update
+        for (int k = 0; k < idx.size(); k++){
+            int cidx = idx[k];
+	    c__[(cidx-1) + ((j-1)* *m)] += sm * val[k];
+        }
+L70:
+	;
+    }
+L80:
+    idx.clear();
+    val.clear();
+    return;
+} /* h12_ */
+
+
+double h12t1, h12t2;
 static void h12_(const int *mode, int *lpivot, int *l1, 
 		 int *m, double *u, const int *iue, double *up, 
 		 double *c__, const int *ice, const int *icv, const int *ncv)
@@ -211,7 +384,10 @@ static void h12_(const int *mode, int *lpivot, int *l1,
     u_offset = 1 + u_dim1;
     u -= u_offset;
     --c__;
-
+    
+    // Declare sm1 fot use in loop fusion
+    double sm1 = 0;
+    
     /* Function Body */
     if (0 >= *lpivot || *lpivot >= *l1 || *l1 > *m) {
 	goto L80;
@@ -222,8 +398,11 @@ static void h12_(const int *mode, int *lpivot, int *l1,
     }
 /*     ****** CONSTRUCT THE TRANSFORMATION ****** */
     i__1 = *m;
+
     for (j = *l1; j <= i__1; ++j) {
-	sm = (d__1 = u[j * u_dim1 + 1], fabs(d__1));
+	double temp_val = u[j * u_dim1 + 1];
+	sm = (d__1 = temp_val, fabs(d__1));
+	sm1 += temp_val * temp_val;
 /* L10: */
 	cl = MAX2(sm,cl);
     }
@@ -234,13 +413,8 @@ static void h12_(const int *mode, int *lpivot, int *l1,
 /* Computing 2nd power */
     d__1 = u[*lpivot * u_dim1 + 1] * clinv;
     sm = d__1 * d__1;
-    i__1 = *m;
-    for (j = *l1; j <= i__1; ++j) {
-/* L20: */
-/* Computing 2nd power */
-	d__1 = u[j * u_dim1 + 1] * clinv;
-	sm += d__1 * d__1;
-    }
+
+    sm += sm1 * clinv * clinv;
     cl *= sqrt(sm);
     if (u[*lpivot * u_dim1 + 1] > 0.0) {
 	cl = -cl;
@@ -273,7 +447,6 @@ L40:
 	i__2 = *m;
 	for (i__ = *l1; i__ <= i__2; ++i__) {
 	    sm += c__[i3] * u[i__ * u_dim1 + 1];
-/* L50: */
 	    i3 += *ice;
 	}
 	if (sm == 0.0) {
@@ -284,7 +457,6 @@ L40:
 	i__2 = *m;
 	for (i__ = *l1; i__ <= i__2; ++i__) {
 	    c__[i4] += sm * u[i__ * u_dim1 + 1];
-/* L60: */
 	    i4 += *ice;
 	}
 L70:
@@ -293,6 +465,380 @@ L70:
 L80:
     return;
 } /* h12_ */
+
+
+static void h12_copy(const int *mode, int *lpivot, int *l1, 
+		 int *m, double *u, const int *iue, double *up, 
+		 double *c__, const int *ice, const int *icv, const int *ncv, double **temp_matrix)
+{
+    /* Initialized data */
+
+    const double one = 1.;
+
+    /* System generated locals */
+    int u_dim1, u_offset, i__1, i__2;
+    double d__1;
+
+    /* Local variables */
+    double b;
+    int i__, j, i2, i3, i4;
+    double cl, sm;
+    int incr;
+    double clinv;
+
+/*     C.L.LAWSON AND R.J.HANSON, JET PROPULSION LABORATORY, 1973 JUN 12 */
+/*     TO APPEAR IN 'SOLVING LEAST SQUARES PROBLEMS', PRENTICE-HALL, 1974 */
+/*     CONSTRUCTION AND/OR APPLICATION OF A SINGLE */
+/*     HOUSEHOLDER TRANSFORMATION  Q = I + U*(U**T)/B */
+/*     MODE    = 1 OR 2   TO SELECT ALGORITHM  H1  OR  H2 . */
+/*     LPIVOT IS THE INDEX OF THE PIVOT ELEMENT. */
+/*     L1,M   IF L1 <= M   THE TRANSFORMATION WILL BE CONSTRUCTED TO */
+/*            ZERO ELEMENTS INDEXED FROM L1 THROUGH M. */
+/*            IF L1 > M THE SUBROUTINE DOES AN IDENTITY TRANSFORMATION. */
+/*     U(),IUE,UP */
+/*            ON ENTRY TO H1 U() STORES THE PIVOT VECTOR. */
+/*            IUE IS THE STORAGE INCREMENT BETWEEN ELEMENTS. */
+/*            ON EXIT FROM H1 U() AND UP STORE QUANTITIES DEFINING */
+/*            THE VECTOR U OF THE HOUSEHOLDER TRANSFORMATION. */
+/*            ON ENTRY TO H2 U() AND UP */
+/*            SHOULD STORE QUANTITIES PREVIOUSLY COMPUTED BY H1. */
+/*            THESE WILL NOT BE MODIFIED BY H2. */
+/*     C()    ON ENTRY TO H1 OR H2 C() STORES A MATRIX WHICH WILL BE */
+/*            REGARDED AS A SET OF VECTORS TO WHICH THE HOUSEHOLDER */
+/*            TRANSFORMATION IS TO BE APPLIED. */
+/*            ON EXIT C() STORES THE SET OF TRANSFORMED VECTORS. */
+/*     ICE    STORAGE INCREMENT BETWEEN ELEMENTS OF VECTORS IN C(). */
+/*     ICV    STORAGE INCREMENT BETWEEN VECTORS IN C(). */
+/*     NCV    NUMBER OF VECTORS IN C() TO BE TRANSFORMED. */
+/*            IF NCV <= 0 NO OPERATIONS WILL BE DONE ON C(). */
+    /* Parameter adjustments */
+    u_dim1 = *iue;
+    u_offset = 1 + u_dim1;
+    u -= u_offset;
+    --c__;
+
+    //Used for loop fusion
+    double sm1 = 0;
+
+    /* Function Body */
+    if (0 >= *lpivot || *lpivot >= *l1 || *l1 > *m) {
+	goto L80;
+    }
+    cl = fabs(temp_matrix[*lpivot - 1][*lpivot - 1]);
+    if (*mode == 2) {
+	goto L30;
+    }
+/*     ****** CONSTRUCT THE TRANSFORMATION ****** */
+    i__1 = *m;
+
+    
+    for (j = *l1; j <= i__1; ++j) {
+	sm = fabs(temp_matrix[*lpivot - 1][j - 1]);
+	sm1 += sm * sm;
+	cl = MAX2(sm,cl);
+    }
+    if (cl <= 0.0) {
+	goto L80;
+    }
+    clinv = one / cl;
+/* Computing 2nd power */
+    d__1 = temp_matrix[*lpivot - 1][*lpivot - 1] * clinv;
+    sm = d__1 * d__1;
+
+    sm += sm1 * clinv * clinv;
+    cl *= sqrt(sm);
+    if (temp_matrix[*lpivot - 1][*lpivot - 1] > 0.0) {
+	cl = -cl;
+    }
+    *up = temp_matrix[*lpivot - 1][*lpivot - 1] - cl;
+    temp_matrix[*lpivot - 1][*lpivot - 1] = cl;
+    goto L40;
+/*     ****** APPLY THE TRANSFORMATION  I+U*(U**T)/B  TO C ****** */
+L30:
+    if (cl <= 0.0) {
+	goto L80;
+    }
+L40:
+    if (*ncv <= 0) {
+	goto L80;
+    }
+    b = *up * temp_matrix[*lpivot - 1][*lpivot - 1];
+    if (b >= 0.0) {
+	goto L80;
+    }
+    b = one / b;
+    i2 = 1 - *icv + *ice * (*lpivot - 1);
+    incr = *ice * (*l1 - *lpivot);
+    i__1 = *ncv;
+    for (j = 1; j <= i__1; ++j) {
+	i2 += *icv;
+	i3 = i2 + incr;
+	i4 = i3;
+
+	if(*mode == 1) {
+		sm = temp_matrix[*lpivot - 1 + j][*lpivot - 1] * *up;
+		i__2 = *m;
+		for (i__ = *l1; i__ <= i__2; ++i__) {
+		    sm += temp_matrix[*lpivot - 1 + j][i__ - 1] * temp_matrix[*lpivot - 1][i__ - 1];
+		}
+		if (sm == 0.0) {
+		    goto L70;
+		}
+		sm *= b;
+		temp_matrix[*lpivot - 1 + j][*lpivot - 1] += sm * *up;
+		i__2 = *m;
+		for (i__ = *l1; i__ <= i__2; ++i__) {
+		    temp_matrix[*lpivot - 1 + j][i__ - 1] += sm * temp_matrix[*lpivot - 1][i__ - 1];
+		}
+	}
+	else {
+		sm = c__[i2] * *up;
+		i__2 = *m;
+		for (i__ = *l1; i__ <= i__2; ++i__) {
+		    sm += c__[i3] * temp_matrix[*lpivot - 1][i__ - 1];
+		    i3 += *ice;
+		}
+		if (sm == 0.0) {
+		    goto L70;
+		}
+		sm *= b;
+		c__[i2] += sm * *up;
+		i__2 = *m;
+		for (i__ = *l1; i__ <= i__2; ++i__) {
+		    c__[i4] += sm * temp_matrix[*lpivot - 1][i__ - 1];
+		    i4 += *ice;
+		}
+	}
+L70:
+	;
+    }
+L80:
+    return;
+} /* h12_ */
+
+
+void write_to_csv(double** matrix, const std::size_t rows, const std::size_t cols, const std::string& filename, bool keep_original=false){
+
+	std::size_t sum = 0;
+	if (std::string::npos == filename.find(".csv")) std::cout<<"File Type should be csv. Skipping File Write.\n";
+	else{
+		std::ofstream outfile(filename);
+		for (std::size_t i = 0; i < rows; i++){
+			for (std::size_t j = 0; j < cols; j++){
+				if (keep_original){
+						if (j == cols-1) outfile << matrix[i][j];
+						else outfile<<matrix[i][j]<<' ';
+				}
+				else{
+					sum += abs(matrix[i][j]);
+					if ( abs(matrix[i][j]) > 1.0e-7){
+						if (j == cols-1) outfile << 1;
+						else outfile<<1<<',';
+					}
+					else{
+						if (j == cols-1) outfile << 0;
+						else outfile<<0<<',';
+					}
+				}
+			}
+			outfile<<'\n';
+		}
+		outfile.close();	
+	}
+	std::cout<<"Matrix Sum: "<<sum<<std::endl;
+}
+
+static void h1_copy(const int *mode, int *lpivot, int *l1, 
+		 int *m, double *u, const int *iue, double *up, 
+		 double *c__, const int *ice, const int *icv, const int *ncv, double **temp_matrix)
+{
+    /* Initialized data */
+
+    const double one = 1.;
+
+    /* System generated locals */
+    int u_dim1, u_offset, i__1, i__2;
+    double d__1;
+
+    /* Local variables */
+    double b;
+    int i__, j;
+    double cl, sm;
+    double clinv;
+
+    /* Parameter adjustments */
+    u_dim1 = *iue;
+    u_offset = 1 + u_dim1;
+    u -= u_offset;
+    --c__;
+
+    //Used for loop fusion
+    double sm1 = 0;
+
+    /* Function Body */
+    if (0 >= *lpivot || *lpivot >= *l1 || *l1 > *m) {
+	return;
+    }
+    cl = fabs(temp_matrix[*lpivot - 1][*lpivot - 1]);
+
+/*     ****** CONSTRUCT THE TRANSFORMATION ****** */
+    i__1 = *m;
+    
+    for (j = *l1; j <= i__1; ++j) {
+	sm = fabs(temp_matrix[*lpivot - 1][j - 1]);
+	sm1 += sm * sm;
+	cl = MAX2(sm,cl);
+    }
+    if (cl <= 0.0) {
+	return;
+    }
+    clinv = one / cl;
+/* Computing 2nd power */
+    d__1 = temp_matrix[*lpivot - 1][*lpivot - 1] * clinv;
+    sm = d__1 * d__1;
+
+    sm += sm1 * clinv * clinv;
+    cl *= sqrt(sm);
+    if (temp_matrix[*lpivot - 1][*lpivot - 1] > 0.0) {
+	cl = -cl;
+    }
+    *up = temp_matrix[*lpivot - 1][*lpivot - 1] - cl;
+    temp_matrix[*lpivot - 1][*lpivot - 1] = cl;
+/*     ****** APPLY THE TRANSFORMATION  I+U*(U**T)/B  TO C ****** */
+    if (*ncv <= 0) {
+	return;
+    }
+    b = *up * temp_matrix[*lpivot - 1][*lpivot - 1];
+    if (b >= 0.0) {
+	return;
+    }
+    b = one / b;
+    i__1 = *ncv;
+    for (j = 1; j <= i__1; ++j) {
+	sm = temp_matrix[*lpivot - 1 + j][*lpivot - 1] * *up;
+	i__2 = *m;
+	for (i__ = *l1; i__ <= i__2; ++i__) {
+		sm += temp_matrix[*lpivot - 1 + j][i__ - 1] * temp_matrix[*lpivot - 1][i__ - 1];
+	}
+	if (sm == 0.0) {
+		continue;
+	}
+	sm *= b;
+	temp_matrix[*lpivot - 1 + j][*lpivot - 1] += sm * *up;
+	i__2 = *m;
+	for (i__ = *l1; i__ <= i__2; ++i__) {
+		temp_matrix[*lpivot - 1 + j][i__ - 1] += sm * temp_matrix[*lpivot - 1][i__ - 1];
+	}
+    }
+}
+
+static void h2_copy(const int *mode, int *lpivot, int *l1, 
+		 int *m, double *u, const int *iue, double *up, 
+		 double *c__, const int *ice, const int *icv, const int *ncv, double **temp_matrix, double **eg_temp_matrix, std::vector<int> &pivot_ptr, std::vector<int> &row_ptr, std::vector<int> &col_idx, std::vector<double> &data)
+{
+    /* Initialized data */
+
+    const double one = 1.;
+
+    /* System generated locals */
+    int u_dim1, u_offset, i__1, i__2;
+    double d__1;
+
+    /* Local variables */
+    double b;
+    int i__, j, i2, i3, i4;
+    double cl, sm;
+    int incr;
+    double clinv;
+
+    /* Parameter adjustments */
+    u_dim1 = *iue;
+    u_offset = 1 + u_dim1;
+    u -= u_offset;
+    --c__;
+
+    //Used for loop fusion
+    double sm1 = 0;
+
+    int c_start = pivot_ptr[*lpivot-1];
+    int c_end = row_ptr[*lpivot];
+
+    /* Function Body */
+    if (0 >= *lpivot || *lpivot >= *l1 || *l1 > *m) {
+	goto L80;
+    }
+
+    cl = fabs(data[c_start]);
+
+    if (*mode == 2) {
+	goto L30;
+    }
+/*     ****** CONSTRUCT THE TRANSFORMATION ****** */
+    i__1 = *m;
+    
+    for (j = *l1; j <= i__1; ++j) {
+	sm = fabs(temp_matrix[*lpivot - 1][j - 1]);
+	sm1 += sm * sm;
+	cl = MAX2(sm,cl);
+    }
+    if (cl <= 0.0) {
+	goto L80;
+    }
+    clinv = one / cl;
+/* Computing 2nd power */
+    d__1 = temp_matrix[*lpivot - 1][*lpivot - 1] * clinv;
+    sm = d__1 * d__1;
+
+    sm += sm1 * clinv * clinv;
+
+    cl *= sqrt(sm);
+    if (temp_matrix[*lpivot - 1][*lpivot - 1] > 0.0) {
+	cl = -cl;
+    }
+    *up = temp_matrix[*lpivot - 1][*lpivot - 1] - cl;
+    temp_matrix[*lpivot - 1][*lpivot - 1] = cl;
+    goto L40;
+/*     ****** APPLY THE TRANSFORMATION  I+U*(U**T)/B  TO C ****** */
+L30:
+    if (cl <= 0.0) {
+	goto L80;
+    }
+L40:
+    if (*ncv <= 0) {
+	goto L80;
+    }
+    b = *up * data[c_start];    
+
+    if (b >= 0.0) {
+	goto L80;
+    }
+    b = one / b;
+    i2 = 1 - *icv + *ice * (*lpivot - 1);
+    incr = *ice * (*l1 - *lpivot);
+    i__1 = *ncv;
+    
+    for (j = 1; j <= i__1; ++j) {
+
+	sm = eg_temp_matrix[j-1][*lpivot-1] * *up;
+
+	for (i__ = c_start+1; i__ < c_end; i__++){
+	    sm += eg_temp_matrix[j-1][col_idx[i__]] * data[i__];
+	}
+
+	if (sm == 0.0) {
+	    continue;
+	}
+
+	sm *= b;
+	eg_temp_matrix[j-1][*lpivot-1] += sm * *up;
+	i__2 = *m;
+	for (i__ = c_start+1; i__ < c_end; i__++){
+	    eg_temp_matrix[j-1][col_idx[i__]] += sm * data[i__];
+	}
+    }
+L80:
+    return;
+}
 
 static void nnls_(double *a, int *mda, int *m, int *
 	n, double *b, double *x, double *rnorm, double *w, 
@@ -424,6 +970,7 @@ L140:
     i__2 = npp1 + 1;
     h12_(&c__1, &npp1, &i__2, m, &a[j * a_dim1 + 1], &c__1, &up, &z__[1], &
 	    c__1, &c__1, &c__0);
+
     unorm = dnrm2___(&nsetp, &a[j * a_dim1 + 1], 1);
     t = factor * (d__1 = a[npp1 + j * a_dim1], fabs(d__1));
     d__1 = unorm + t;
@@ -684,16 +1231,19 @@ L50:
     return;
 } /* ldp_ */
 
+int lsi_n = 0, lsei_n=0;
+unsigned int gctr = 0;
 static void lsi_(double *e, double *f, double *g, 
 	double *h__, int *le, int *me, int *lg, int *mg, 
 	int *n, double *x, double *xnorm, double *w, int *
-	jw, int *mode)
+	jw, int *mode, double **g_temp_matrix, double **e_temp_matrix)
 {
     /* Initialized data */
 
     const double epmach = 2.22e-16;
     const double one = 1.;
 
+    lsi_n = *n;
     /* System generated locals */
     int e_dim1, e_offset, g_dim1, g_offset, i__1, i__2, i__3;
     double d__1;
@@ -744,41 +1294,55 @@ static void lsi_(double *e, double *f, double *g,
     e_offset = 1 + e_dim1;
     e -= e_offset;
     --w;
-
     /* Function Body */
 /*  QR-FACTORS OF E AND APPLICATION TO F */
     i__1 = *n;
+
+    auto e1 = omp_get_wtime();
     for (i__ = 1; i__ <= i__1; ++i__) {
 /* Computing MIN */
 	i__2 = i__ + 1;
 	j = MIN2(i__2,*n);
 	i__2 = i__ + 1;
 	i__3 = *n - i__;
-	h12_(&c__1, &i__, &i__2, me, &e[i__ * e_dim1 + 1], &c__1, &t, &e[j * 
-		e_dim1 + 1], &c__1, le, &i__3);
+	h12_row_wise(&c__1, &i__, &i__2, me, &e[i__ * e_dim1 + 1], &c__1, &t, &e[j * 
+		e_dim1 + 1], &c__1, le, &i__3, lsei_n-lsi_n-1);
 /* L10: */
 	i__2 = i__ + 1;
 	h12_(&c__2, &i__, &i__2, me, &e[i__ * e_dim1 + 1], &c__1, &t, &f[1], &
 		c__1, &c__1, &c__1);
     }
+    auto e2 = omp_get_wtime();
+    std::cout<<"Time taken by QR factorization of E and application to F: "<<e2-e1<<'\n';
+
 /*  TRANSFORM G AND H TO GET LEAST DISTANCE PROBLEM */
     *mode = 5;
     i__2 = *mg;
+    double lsi_start = omp_get_wtime();
+
+    #pragma omp parallel for num_threads(20)
     for (i__ = 1; i__ <= i__2; ++i__) {
 	i__1 = *n;
 	for (j = 1; j <= i__1; ++j) {
-	    if ((d__1 = e[j + j * e_dim1], fabs(d__1)) < epmach) {
-		goto L50;
+	    if ((d__1 = e[j + j * e_dim1], fabs(d__1)) > epmach) {
+	    	i__3 = j - 1;
+	    	g_temp_matrix[i__-1][lsei_n - lsi_n +j-1] =  (g_temp_matrix[i__-1][lsei_n - lsi_n +j-1] - ddot_sl__using_tempMat(&i__3, g_temp_matrix, i__ - 1, &e[j * e_dim1 + 1], 1, lsei_n-lsi_n)) / e[j + j * e_dim1];
+
 	    }
-/* L20: */
-	    i__3 = j - 1;
-	    g[i__ + j * g_dim1] = (g[i__ + j * g_dim1] - ddot_sl__(&i__3, &g[
-		    i__ + g_dim1], *lg, &e[j * e_dim1 + 1], 1)) / e[j + j *
-		     e_dim1];
 	}
-/* L30: */
-	h__[i__] -= ddot_sl__(n, &g[i__ + g_dim1], *lg, &f[1], 1);
+
+	h__[i__] -= ddot_sl__using_tempMat(n, g_temp_matrix, i__-1, &f[1], 1, lsei_n-lsi_n);
     }
+
+    for(int xyz = 0; xyz < *n; xyz++) {
+    	for(int abc = 0; abc < *mg; abc++){
+		g[g_offset + ((xyz * *lg) + abc)] = g_temp_matrix[abc][lsei_n-lsi_n+xyz];
+	}
+    }
+
+    double lsi_end = omp_get_wtime();
+    printf("Time taken by back substitution in lsi : %0.5f\n", lsi_end-lsi_start);
+    std::cout<<"------------------------------------------------------------------------------------------\n";
 /*  SOLVE LEAST DISTANCE PROBLEM */
     ldp_(&g[g_offset], lg, mg, n, &h__[1], &x[1], xnorm, &w[1], &jw[1], mode);
     if (*mode != 1) {
@@ -786,6 +1350,7 @@ static void lsi_(double *e, double *f, double *g,
     }
 /*  SOLUTION OF ORIGINAL PROBLEM */
     daxpy_sl__(n, &one, &f[1], 1, &x[1], 1);
+
     for (i__ = *n; i__ >= 1; --i__) {
 /* Computing MIN */
 	i__2 = i__ + 1;
@@ -1001,12 +1566,10 @@ L180:
 	}
 	i__1 = *n;
 	for (j = kp1; j <= i__1; ++j) {
-/* L220: */
 	    b[j + jb * b_dim1] = 0.0;
 	}
 	i__1 = k;
 	for (i__ = 1; i__ <= i__1; ++i__) {
-/* L230: */
 	    h12_(&c__2, &i__, &kp1, n, &a[i__ + a_dim1], mda, &g[i__], &b[jb *
 		     b_dim1 + 1], &c__1, mdb, &c__1);
 	}
@@ -1028,6 +1591,15 @@ L270:
     *krank = k;
 } /* hfti_ */
 
+int iteration_count = 0;
+double **temp_matrix, **e_temp_matrix, **g_temp_matrix;
+
+// CSR Data Structures
+std::vector<int> pivot_ptr;
+std::vector<int> row_ptr;
+std::vector<int> col_idx;
+std::vector<double> data;
+
 static void lsei_(double *c__, double *d__, double *e, 
 	double *f, double *g, double *h__, int *lc, int *
 	mc, int *le, int *me, int *lg, int *mg, int *n, 
@@ -1035,7 +1607,7 @@ static void lsei_(double *c__, double *d__, double *e,
 	mode)
 {
     /* Initialized data */
-
+    lsei_n = *n;
     const double epmach = 2.22e-16;
 
     /* System generated locals */
@@ -1103,6 +1675,7 @@ static void lsei_(double *c__, double *d__, double *e,
     --jw;
 
     /* Function Body */
+
     *mode = 2;
     if (*mc > *n) {
 	goto L75;
@@ -1113,24 +1686,110 @@ static void lsei_(double *c__, double *d__, double *e,
     ie = iw + *mc + 1;
     if__ = ie + *me * l;
     ig = if__ + *me;
-/*  TRIANGULARIZE C AND APPLY FACTORS TO E AND G */
     i__1 = *mc;
+
+    if(iteration_count == 0) {
+    	temp_matrix = (double **)malloc(c_dim1 * sizeof(double *));
+    	for(int abc = 0; abc < c_dim1; abc++){
+    		temp_matrix[abc] = (double*)malloc((*n) * sizeof(double));
+		for(int xyz = 1; xyz <= (*n); xyz++) {
+			temp_matrix[abc][xyz-1] = c__[((xyz * c_dim1) + 1) + abc];
+		}
+    	}
+	for (i__ = 1; i__ <= i__1; ++i__) {
+		i__2 = i__ + 1;
+		j = MIN2(i__2,*lc);
+		i__2 = i__ + 1;
+		i__3 = *mc - i__;
+		h1_copy(&c__1, &i__, &i__2, n, &c__[i__ + c_dim1], lc, &w[iw + i__], &
+			c__[j + c_dim1], lc, &c__1, &i__3, temp_matrix);
+	}
+
+        //CSR Format Logic
+
+        row_ptr.push_back(0);
+	pivot_ptr.resize(c_dim1, 0);
+	int NNZ = 0;
+
+
+        for (int abc = 0; abc < c_dim1; abc++)
+        {
+    	    for (int xyz = 0; xyz < (*n); xyz++)
+    	    {
+        	double temp_val = temp_matrix[abc][xyz];
+
+        	if (temp_val != 0 || abc == xyz)
+        	{
+            	    col_idx.push_back(xyz);
+            	    data.push_back(temp_val);
+		    NNZ++;
+	    	    if(abc == xyz)
+			pivot_ptr[abc] = col_idx.size() - 1;
+        	}
+    	    }
+	    row_ptr.push_back(NNZ);
+        }
+
+
+    	e_temp_matrix = (double **)malloc((*le) * sizeof(double *));
+	for(int abc = 0; abc < *le; abc++) {
+		e_temp_matrix[abc] = (double *)malloc((*n) * sizeof(double));
+	}
+    	g_temp_matrix = (double **)malloc((*lg) * sizeof(double *));
+	for(int abc = 0; abc < *lg; abc++) {
+		g_temp_matrix[abc] = (double *)malloc((*n) * sizeof(double));
+	}
+    }
+    iteration_count += 1;
+    printf("Iteration number %d\n", iteration_count);
+
+    for(int xyz = 0; xyz < *n; xyz++) {
+    	for(int abc = 0; abc < *le; abc++){
+		e_temp_matrix[abc][xyz] = e[e_offset + ((xyz * *le) + abc)];
+	}
+    }
+    for(int xyz = 0; xyz < *n; xyz++) {
+    	for(int abc = 0; abc < *mg; abc++){
+		g_temp_matrix[abc][xyz] = g[g_offset + ((xyz * *lg) + abc)];
+	}
+    }
+
+    h12t1 = omp_get_wtime();
+    double t1, t2;
+/*  TRIANGULARIZE C AND APPLY FACTORS TO E AND G */
     for (i__ = 1; i__ <= i__1; ++i__) {
 /* Computing MIN */
 	i__2 = i__ + 1;
 	j = MIN2(i__2,*lc);
 	i__2 = i__ + 1;
 	i__3 = *mc - i__;
-	h12_(&c__1, &i__, &i__2, n, &c__[i__ + c_dim1], lc, &w[iw + i__], &
-		c__[j + c_dim1], lc, &c__1, &i__3);
-	i__2 = i__ + 1;
-	h12_(&c__2, &i__, &i__2, n, &c__[i__ + c_dim1], lc, &w[iw + i__], &e[
-		e_offset], le, &c__1, me);
-/* L10: */
-	i__2 = i__ + 1;
-	h12_(&c__2, &i__, &i__2, n, &c__[i__ + c_dim1], lc, &w[iw + i__], &g[
-		g_offset], lg, &c__1, mg);
+
+	h2_copy(&c__2, &i__, &i__2, n, &c__[i__ + c_dim1], lc, &w[iw + i__], &e[
+		e_offset], le, &c__1, me, temp_matrix, e_temp_matrix, pivot_ptr, row_ptr, col_idx, data);
+	h2_copy(&c__2, &i__, &i__2, n, &c__[i__ + c_dim1], lc, &w[iw + i__], &g[
+		g_offset], lg, &c__1, mg, temp_matrix, g_temp_matrix, pivot_ptr, row_ptr, col_idx, data);
     }
+    for(int abc = 0; abc < c_dim1; abc++){
+	for(int xyz = 1; xyz <= (*n); xyz++) {
+		c__[((xyz * c_dim1) + 1) + abc] = temp_matrix[abc][xyz-1];
+	}
+    }
+    for(int xyz = 0; xyz < *n; xyz++) {
+    	for(int abc = 0; abc < *le; abc++){
+		e[e_offset + ((xyz * *le) + abc)] = e_temp_matrix[abc][xyz];
+	}
+    }
+    for(int xyz = 0; xyz < *n; xyz++) {
+    	for(int abc = 0; abc < *mg; abc++){
+		g[g_offset + ((xyz * *lg) + abc)] = g_temp_matrix[abc][xyz];
+	}
+    }
+    
+    h12t2 = omp_get_wtime();
+    std::cout<<"------------------------------------------------------------------------------------------\n";
+    printf("Time taken by h12 function in 10/11/12 instances is : %0.5f, Line-1771\n", h12t2 - h12t1);
+
+    t1 = omp_get_wtime();
 /*  SOLVE C*X=D AND MODIFY F */
     *mode = 6;
     i__2 = *mc;
@@ -1141,7 +1800,6 @@ static void lsei_(double *c__, double *d__, double *e,
 	i__1 = i__ - 1;
 	x[i__] = (d__[i__] - ddot_sl__(&i__1, &c__[i__ + c_dim1], *lc, &x[1], 1)) 
 	     / c__[i__ + i__ * c_dim1];
-/* L15: */
     }
     *mode = 1;
     w[mc1] = 0.0;
@@ -1152,18 +1810,15 @@ static void lsei_(double *c__, double *d__, double *e,
     }
     i__2 = *me;
     for (i__ = 1; i__ <= i__2; ++i__) {
-/* L20: */
 	w[if__ - 1 + i__] = f[i__] - ddot_sl__(mc, &e[i__ + e_dim1], *le, &x[1], 1);
     }
 /*  STORE TRANSFORMED E & G */
     i__2 = *me;
     for (i__ = 1; i__ <= i__2; ++i__) {
-/* L25: */
 	dcopy___(&l, &e[i__ + mc1 * e_dim1], *le, &w[ie - 1 + i__], *me);
     }
     i__2 = *mg;
     for (i__ = 1; i__ <= i__2; ++i__) {
-/* L30: */
 	dcopy___(&l, &g[i__ + mc1 * g_dim1], *lg, &w[ig - 1 + i__], *mg);
     }
     if (*mg > 0) {
@@ -1173,6 +1828,7 @@ static void lsei_(double *c__, double *d__, double *e,
     *mode = 7;
     k = MAX2(*le,*n);
     t = sqrt(epmach);
+    //printf("Calling HFTI: 1554\n");
     hfti_(&w[ie], me, me, &l, &w[if__], &k, &c__1, &t, &krank, xnrm, &w[1], &
 	    w[l + 1], &jw[1]);
     dcopy___(&l, &w[if__], 1, &x[mc1], 1);
@@ -1185,11 +1841,13 @@ static void lsei_(double *c__, double *d__, double *e,
 L40:
     i__2 = *mg;
     for (i__ = 1; i__ <= i__2; ++i__) {
-/* L45: */
 	h__[i__] -= ddot_sl__(mc, &g[i__ + g_dim1], *lg, &x[1], 1);
     }
+    t2 = omp_get_wtime();
+    printf("Time taken inside lsei after 10/11/12 instance of h12: %0.5f\n", t2 - t1); 
+    
     lsi_(&w[ie], &w[if__], &w[ig], &h__[1], me, me, mg, mg, &l, &x[mc1], xnrm,
-	     &w[mc1], &jw[1], mode);
+	     &w[mc1], &jw[1], mode, g_temp_matrix, e_temp_matrix);
     if (*mc == 0) {
 	goto L75;
     }
@@ -1202,21 +1860,20 @@ L40:
 L50:
     i__2 = *me;
     for (i__ = 1; i__ <= i__2; ++i__) {
-/* L55: */
 	f[i__] = ddot_sl__(n, &e[i__ + e_dim1], *le, &x[1], 1) - f[i__];
     }
     i__2 = *mc;
     for (i__ = 1; i__ <= i__2; ++i__) {
-/* L60: */
 	d__[i__] = ddot_sl__(me, &e[i__ * e_dim1 + 1], 1, &f[1], 1) - 
 		ddot_sl__(mg, &g[i__ * g_dim1 + 1], 1, &w[mc1], 1);
     }
+    
     for (i__ = *mc; i__ >= 1; --i__) {
-/* L65: */
 	i__2 = i__ + 1;
 	h12_(&c__2, &i__, &i__2, n, &c__[i__ + c_dim1], lc, &w[iw + i__], &x[
 		1], &c__1, &c__1, &c__1);
     }
+
     for (i__ = *mc; i__ >= 1; --i__) {
 /* Computing MIN */
 	i__2 = i__ + 1;
@@ -1224,10 +1881,9 @@ L50:
 	i__2 = *mc - i__;
 	w[i__] = (d__[i__] - ddot_sl__(&i__2, &c__[j + i__ * c_dim1], 1, &
 		w[j], 1)) / c__[i__ + i__ * c_dim1];
-/* L70: */
     }
 /*  END OF SUBROUTINE LSEI */
-L75:
+L75:  
     return;
 } /* lsei_ */
 
@@ -1366,7 +2022,6 @@ static void lsq_(int *m, int *meq, int *n, int *nl,
 	i__1 = mineq;
 	for (i__ = 1; i__ <= i__1; ++i__) {
 	    dcopy___(n, &a[*meq + i__ + a_dim1], *la, &w[ig - 1 + i__], m1);
-/* L30: */
 	}
     }
 /*  AUGMENT MATRIX G BY +I AND -I */
@@ -1381,19 +2036,16 @@ static void lsq_(int *m, int *meq, int *n, int *nl,
     /* SGJ, 2010: skip constraints for infinite bounds */
     for (i__ = 1; i__ <= *n; ++i__)
 	 if (!nlopt_isinf(xl[i__])) w[(ip - i__1) + i__ * i__1] = +1.0;
-    /* Old code: w[ip] = one; dcopy___(n, &w[ip], 0, &w[ip], i__1); */
     im = ip + *n;
     i__1 = *n;
     for (i__ = 1; i__ <= i__1; ++i__) {
 	w[im - 1 + i__] = 0.0;
 	dcopy___(n, &w[im - 1 + i__], 0, &w[im - 1 + i__], m1);
-/* L50: */
     }
     i__1 = m1 + 1;
     /* SGJ, 2010: skip constraints for infinite bounds */
     for (i__ = 1; i__ <= *n; ++i__)
 	 if (!nlopt_isinf(xu[i__])) w[(im - i__1) + i__ * i__1] = -1.0;
-    /* Old code: w[im] = -one;  dcopy___(n, &w[im], 0, &w[im], i__1); */
     ih = ig + m1 * *n;
     if (mineq > 0) {
 /*  RECOVER H FROM LOWER PART OF B */
@@ -1409,9 +2061,6 @@ static void lsq_(int *m, int *meq, int *n, int *nl,
 	 w[(il-1) + i__] = nlopt_isinf(xl[i__]) ? 0 : xl[i__];
 	 w[(iu-1) + i__] = nlopt_isinf(xu[i__]) ? 0 : -xu[i__];
     }
-    /* Old code: dcopy___(n, &xl[1], 1, &w[il], 1);
-                 dcopy___(n, &xu[1], 1, &w[iu], 1);
-		 d__1 = -one; dscal_sl__(n, &d__1, &w[iu], 1); */
     iw = iu + *n;
     i__1 = MAX2(1,*meq);
     lsei_(&w[ic], &w[id], &w[ie], &w[if__], &w[ig], &w[ih], &i__1, meq, n, n, 
@@ -1800,6 +2449,8 @@ typedef struct {
      RS(iexact); \
      RS(incons); RS(ireset); RS(itermx)
 
+unsigned int slsqpb_ctr = 0;
+
 static void slsqpb_(int *m, int *meq, int *la, int *
 		    n, double *x, const double *xl, const double *xu, double *f, 
 		    double *c__, double *g, double *a, double *acc, 
@@ -1808,6 +2459,8 @@ static void slsqpb_(int *m, int *meq, int *la, int *
 		    double *v, double *w, int *iw, 
 		    slsqpb_state *state)
 {
+    slsqpb_ctr++;
+
     /* Initialized data */
 
     const double one = 1.;
@@ -1843,6 +2496,8 @@ static void slsqpb_(int *m, int *meq, int *la, int *
 /*                     +(N1+MINEQ)*(N1-MEQ) + 2*MEQ + N1       for LSEI */
 /*                      with MINEQ = M - MEQ + 2*N1  &  N1 = N+1 */
     /* Parameter adjustments */
+    clock_t t1, t2;
+
     --mu;
     --c__;
     --v;
@@ -1904,9 +2559,11 @@ L110:
     }
 /*   MAIN ITERATION : SEARCH DIRECTION, STEPLENGTH, LDL'-UPDATE */
 L130:
+	////printf("Inside slsqp: if mode == -1: 6\n");
     ++(*iter);
     *mode = 9;
     if (*iter > itermx && itermx > 0) { /* SGJ 2010: ignore if itermx <= 0 */
+	////printf("Inside slsqp: if mode == -1: 7\n");
 	goto L330;
     }
 /*   SEARCH DIRECTION AS SOLUTION OF QP - SUBPROBLEM */
@@ -1917,11 +2574,13 @@ L130:
     d__1 = -one;
     daxpy_sl__(n, &d__1, &x[1], 1, &v[1], 1);
     h4 = one;
+	////printf("Inside slsqp: if mode == -1: 8\n");
     lsq_(m, meq, n, &n3, la, &l[1], &g[1], &a[a_offset], &c__[1], &u[1], &v[1]
 	    , &s[1], &r__[1], &w[1], &iw[1], mode);
 
 /*   AUGMENTED PROBLEM FOR INCONSISTENT LINEARIZATION */
     if (*mode == 6) {
+	//////printf("I am here, where mode = %d\n", *mode);
 	if (*n == *meq) {
 	    *mode = 4;
 	}
@@ -2178,6 +2837,7 @@ L260:
 	daxpy_sl__(n, &d__1, &v[1], 1, &u[1], 1);
     }
     d__1 = one / h1;
+    
     ldl_(n, &l[1], &u[1], &d__1, &v[1]);
     d__1 = -one / h2;
     ldl_(n, &l[1], &v[1], &d__1, &u[1]);
@@ -2435,6 +3095,7 @@ static void length_work(int *LEN_W, int *LEN_JW, int M, int MEQ, int N)
      *LEN_JW = MINEQ;
 }
 
+double time_taken = 0.0;
 nlopt_result nlopt_slsqp(unsigned n, nlopt_func f, void *f_data,
 			 unsigned m, nlopt_constraint *fc,
 			 unsigned p, nlopt_constraint *h,
@@ -2484,16 +3145,28 @@ nlopt_result nlopt_slsqp(unsigned n, nlopt_func f, void *f_data,
      fprev = fcur = *minf = HUGE_VAL;
      feasible = feasible_cur = 0;
 
+    int var1 = 0;
+
      goto eval_f_and_grad; /* eval before calling slsqp the first time */
 
      do {
+	double t1, t2;
+	
+	if(mode == -1 || mode == -2) {
+		t1 = omp_get_wtime();
+		var1 = 1;
+	}
 	  slsqp(&mpi, &pi, &mpi1, &ni,
 		xcur, lb, ub, &fcur,
 		c, grad, cgrad,
 		&acc, &iter, &mode,
 		w, &len_w, jw, &len_jw,
 		&state);
-
+	if(var1 == 1) {
+		var1 = 0;
+		t2 = omp_get_wtime();
+    	  	std::cout << "Time taken by SLSQP: " << t2 - t1 << std::endl;
+	}
 	  switch (mode) {
 	  case -1:  /* objective & gradient evaluation */
 	      if (prev_mode == -2 && !want_grad) break; /* just evaluated this point */
@@ -2512,15 +3185,21 @@ nlopt_result nlopt_slsqp(unsigned n, nlopt_func f, void *f_data,
 	      feasible_cur = 1; infeasibility_cur = 0;
 	      fcur = f(n, xcur, newgrad, f_data);
 	      ++ *(stop->nevals_p);
+		//////printf("ret value : %d\n", ret);
 	      if (nlopt_stop_forced(stop)) {
+			//////printf("slsqp, inside force stop condition\n");
 		  fcur = HUGE_VAL; ret = NLOPT_FORCED_STOP; goto done; }
 	      if (nlopt_isfinite(fcur)) {
 		  want_grad = 0;
 		  ii = 0;
+		////printf("slsqp, p = %d\n", p);
 		  for (i = 0; i < p; ++i) {
 		      unsigned j, k;
+			////printf("slsqp, Here 1\n");
 		      nlopt_eval_constraint(c+ii, newcgrad, h+i, n, xcur);
+			////printf("slsqp, Here 2: completed constraint evaluation\n");
 		      if (nlopt_stop_forced(stop)) {
+			//////printf("slsqp, inside force stop condition\n");
 			  ret = NLOPT_FORCED_STOP; goto done; }
 		      for (k = 0; k < h[i].m; ++k, ++ii) {
 			  infeasibility_cur =
@@ -2532,11 +3211,16 @@ nlopt_result nlopt_slsqp(unsigned n, nlopt_func f, void *f_data,
 				  cgrad[j*U(mpi1) + ii] = cgradtmp[k*n + j];
 			  }
 		      }
+			//////printf("slsqp, Here 3\n");
 		  }
+		//////printf("slsqp, m = %d\n", m);
 		  for (i = 0; i < m; ++i) {
 		      unsigned j, k;
+			//////printf("slsqp, Here 4\n");
 		      nlopt_eval_constraint(c+ii, newcgrad, fc+i, n, xcur);
+			//////printf("slsqp, Here 5\n");
 		      if (nlopt_stop_forced(stop)) {
+			//////printf("slsqp, inside force stop condition\n");
 			  ret = NLOPT_FORCED_STOP; goto done; }
 		      for (k = 0; k < fc[i].m; ++k, ++ii) {
 			  infeasibility_cur =
@@ -2549,7 +3233,9 @@ nlopt_result nlopt_slsqp(unsigned n, nlopt_func f, void *f_data,
 			  }
 			  c[ii] = -c[ii]; /* slsqp sign convention */
 		      }
+			//////printf("slsqp, Here 6\n");
 		  }
+		////printf("slsqp: line 2585\n");
 	      }
 	      break;}
 	      case 0: /* required accuracy for solution obtained */
@@ -2577,6 +3263,7 @@ nlopt_result nlopt_slsqp(unsigned n, nlopt_func f, void *f_data,
 	      case 5: /* singular matrix E in LSQ subproblem */
 	      case 6: /* singular matrix C in LSQ subproblem */
 	      case 7: /* rank-deficient equality constraint subproblem HFTI */
+		//////printf("I am on case 7\n");
 		  ret = NLOPT_ROUNDOFF_LIMITED;
 		  goto done;
 	      case 4: /* inequality constraints incompatible */
@@ -2596,6 +3283,7 @@ nlopt_result nlopt_slsqp(unsigned n, nlopt_func f, void *f_data,
 	  /* update best point so far */
 	  if (nlopt_isfinite(fcur) && ((fcur < *minf && (feasible_cur || !feasible))
 				       || (!feasible && infeasibility_cur < infeasibility))) {
+			//////printf("slsqp, Here 7\n");
 	       *minf = fcur;
 	       feasible = feasible_cur;
 	       infeasibility = infeasibility_cur;
@@ -2619,6 +3307,7 @@ nlopt_result nlopt_slsqp(unsigned n, nlopt_func f, void *f_data,
 	  if (nlopt_stop_evals(stop)) ret = NLOPT_MAXEVAL_REACHED;
 	  else if (nlopt_stop_time(stop)) ret = NLOPT_MAXTIME_REACHED;
 	  else if (feasible && *minf < stop->minf_max) ret = NLOPT_MINF_MAX_REACHED;
+		//////printf("ret value : %d\n", ret);
      } while (ret == NLOPT_SUCCESS);
 
 done:
@@ -2633,6 +3322,7 @@ done:
 	  }
      }
 
+	////printf("Total time taken inside slsqp when mode is -1/-2 : %0.5f\n", time_taken);
      free(work);
      return ret;
 }

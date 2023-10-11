@@ -1,0 +1,80 @@
+
+double temp_matrix[348][1250], e_temp_matrix[1250][1250];
+
+double up[348];
+
+//Sequential
+
+for (lp = 1; lp <= 348; ++lp) {
+
+        double b = up[lp] * temp_matrix[lp-1][lp-1];
+
+        if (b >= 0){
+            continue;
+        }
+
+        b = 1.0/b;
+
+	for (j = 1; j <= 1250; ++j) {
+
+		sm = e_temp_matrix[j-1][lp-1] * up[lp];
+
+		for (i__ = lp+1; i__ <= 1250; ++i__) {
+		    
+		    sm += e_temp_matrix[j - 1][i__ - 1]  * temp_matrix[lp- 1][i__ - 1];
+		}    
+				
+		if (sm == 0.0) {
+                    continue;
+		}    
+			       
+		sm *= b;
+
+		e_temp_matrix[j-1][lp-1] += sm * up[lp]; 
+				
+		for (i__ = lp+1; i__ <= 1250; ++i__) {
+		    
+		    e_temp_matrix[j - 1][i__ - 1] += sm * temp_matrix[lp- 1][i__ - 1];
+		}    
+
+	}
+}
+
+
+//Possibly Parallelizable
+
+for (j = 1; j <= 1250; ++j) {
+
+	for (lp = 1; lp <= 348; ++lp) {
+
+		double b = up[lp] * temp_matrix[lp-1][lp-1];
+
+		if (b >= 0){
+		    continue;
+		}
+
+		b = 1.0/b;
+
+
+		sm = e_temp_matrix[j-1][lp-1] * up[lp];
+
+		for (i__ = lp+1; i__ <= 1250; ++i__) {
+		    
+		    sm += e_temp_matrix[j - 1][i__ - 1]  * temp_matrix[lp- 1][i__ - 1];
+		}    
+				
+		if (sm == 0.0) {
+                    continue;
+		}    
+			       
+		sm *= b;
+
+		e_temp_matrix[j-1][lp-1] += sm * up[lp]; 
+				
+		for (i__ = lp+1; i__ <= 1250; ++i__) {
+		    
+		    e_temp_matrix[j - 1][i__ - 1] += sm * temp_matrix[lp- 1][i__ - 1];
+		}    
+
+	}
+}

@@ -158,9 +158,10 @@ endif ()
 if (NLOPT_CXX OR NLOPT_PYTHON OR NLOPT_GUILE OR NLOPT_OCTAVE)
   check_cxx_symbol_exists (__cplusplus ciso646 SYSTEM_HAS_CXX)
   if (SYSTEM_HAS_CXX)
-    check_cxx_compiler_flag ("-std=c++11" SUPPORTS_STDCXX11)
-    if (SUPPORTS_STDCXX11)
-      set (CMAKE_CXX_FLAGS "-std=c++11 ${CMAKE_CXX_FLAGS}")
+    check_cxx_compiler_flag ("-std=c++17" SUPPORTS_STDCXX17)
+    if (SUPPORTS_STDCXX17)
+      #set (CMAKE_CXX_FLAGS "-std=c++17 -O3 -march=native -ffast-math -fpermissive -fopenmp ${CMAKE_CXX_FLAGS}")
+      set (CMAKE_CXX_FLAGS "-std=c++17 -march=native -ffast-math -fpermissive -fopenmp ${CMAKE_CXX_FLAGS}")
       if (NLOPT_CXX)
         set (NLOPT_CXX11 ON)
       endif ()
@@ -214,7 +215,7 @@ set (NLOPT_SOURCES
   src/algs/auglag/auglag.c src/algs/auglag/auglag.h
   src/algs/bobyqa/bobyqa.c src/algs/bobyqa/bobyqa.h
   src/algs/isres/isres.c src/algs/isres/isres.h
-  src/algs/slsqp/slsqp.c src/algs/slsqp/slsqp.h
+  src/algs/slsqp/slsqp.cpp src/algs/slsqp/slsqp.h
   src/algs/esch/esch.c src/algs/esch/esch.h
   src/api/general.c src/api/options.c src/api/optimize.c src/api/deprecated.c src/api/nlopt-internal.h src/api/nlopt.h src/api/f77api.c src/api/f77funcs.h src/api/f77funcs_.h ${PROJECT_BINARY_DIR}/nlopt.hpp
   src/util/mt19937ar.c src/util/sobolseq.c src/util/soboldata.h src/util/timer.c src/util/stop.c src/util/nlopt-util.h src/util/redblack.c src/util/redblack.h src/util/qsort_r.c src/util/rescale.c
