@@ -19,13 +19,6 @@
 #include <vector>
 #include <algorithm>
 
-#include <cstddef>
-#include <cmath>
-#include <iostream>
-#include <pthread.h>
-#include <atomic>
-#include <mutex>
-
 /*      ALGORITHM 733, COLLECTED ALGORITHMS FROM ACM. */
 /*      TRANSACTIONS ON MATHEMATICAL SOFTWARE, */
 /*      VOL. 20, NO. 3, SEPTEMBER, 1994, PP. 262-281. */
@@ -824,7 +817,6 @@ L40:
     incr = *ice * (*l1 - *lpivot);
     i__1 = *ncv;
     
-    #pragma omp parallel for num_threads(5) private(i__, sm)
     for (j = 1; j <= i__1; ++j) {
 
 	sm = eg_temp_matrix[j-1][*lpivot-1] * *up;
@@ -1240,390 +1232,6 @@ L50:
 } /* ldp_ */
 
 int lsi_n = 0, lsei_n=0;
-
-struct load{
-    int start;
-    int end;
-};
-
-struct args_t{
-    int tid;
-    int i__1;
-    int n;
-    int m;
-    double *e;
-    int e_dim1;
-    int c__1;
-    int *le;
-    std::vector<double> *up_array;
-};
-
-std::atomic<load> gload;
-
-const unsigned int beta = 10;
-std::atomic<int> global_ctr;
-pthread_barrier_t barr;
-
-int num_threads = 1;
-
-void* thdwork(void* params)
-{
-    args_t* args = (struct args_t*)params;
-    int i__1 = args->i__1;
-    int n = args->n;
-    int m = args->m;
-    double *e = args->e;
-    int e_dim1 = args->e_dim1;
-    int c__1 = args->c__1;
-    int *le = args->le;
-    std::vector<double> &up_array = *(args->up_array);
-
-    const double one = 1.;
-    int i__, i__2, j, i__3, div;
-    int *lpivot, *l1;
-    double up;
-    double *u, *c__;
-    const int *ice, *icv, *ncv;
-
-    for (i__ = 1; i__ <= i__1; ++i__) {
-        i__2 = i__ + 1;
-        j = MIN2(i__2,n);
-        i__2 = i__ + 1;
-        i__3 = n - i__;
-
-        lpivot = &i__;
-        l1 = &i__2;
-        u = &e[i__ * e_dim1 + 1];
-        c__ = &e[j * e_dim1 + 1];
-        ice = &c__1;
-        icv = le;
-        ncv = &i__3;
-        div = lsei_n-lsi_n-1;
-
-        int u_dim1, u_offset;
-        double d__1;
-
-        double b;
-        int i__11, i2, i3, i4;
-        double cl, sm;
-        int incr;
-        double clinv;
-
-        u_dim1 = c__1;
-        u_offset = 1 + u_dim1;
-        u -= u_offset;
-        --c__;
-
-        // Declare sm1 fot use in loop fusion
-        double sm1 = 0;
-        int i5 = 0;
-        
-        std::vector<int> idx;
-        std::vector<double> val;
-        std::size_t nnz = 0;
-
-        if (0 >= *lpivot || *lpivot >= *l1 || *l1 > m) {
-            continue;
-        }
-        cl = fabs(u[*lpivot * u_dim1 + 1]);
-
-        for (j = *l1; j <= m; ++j) {
-            double temp_val = u[j * u_dim1 + 1];
-            if (j >= *l1 + div){
-                if (temp_val != 0.0){
-                    idx.push_back(j * u_dim1 + 1);
-                    val.push_back(temp_val);
-                    sm = fabs(temp_val);
-                    sm1 += temp_val * temp_val;
-                    nnz++;
-                }
-            }
-            else{
-                sm = fabs(temp_val);
-                sm1 += temp_val * temp_val;
-            }
-            cl = MAX2(sm,cl);
-        }
-        if (cl <= 0.0) {
-	    idx.clear();
-	    val.clear();
-            continue;
-        }
-        clinv = one / cl;
-
-        d__1 = u[*lpivot * u_dim1 + 1] * clinv;
-        sm = d__1 * d__1;
-
-        sm += sm1 * clinv * clinv;
-        cl *= sqrt(sm);
-        if (u[*lpivot * u_dim1 + 1] > 0.0) {
-            cl = -cl;
-        }
-        up = u[*lpivot * u_dim1 + 1] - cl;
-        up_array.push_back(up);
-
-        int old = lpivot-1;
-        if(global_ctr.compare_exchange_strong(old, lpivot, std::memory_order_seq_cst)){
-            u[*lpivot * u_dim1 + 1] = cl;
-        }
-        // u[*lpivot * u_dim1 + 1] = cl;
-
-        if (i__3 <= 0) {
-            idx.clear();
-	    val.clear();	    
-            continue;
-        }
-        b = up * u[*lpivot * u_dim1 + 1];
-        if (b >= 0.0) {
-	    idx.clear();
-	    val.clear();
-            continue;
-        }
-        b = one / b;
-        i2 = 1 - *le + c__1 * (*lpivot - 1);
-        incr = c__1 * (*l1 - *lpivot);
-
-        while(1)
-        {
-            load old, local;
-            old = gload.load();
-            local = old;
-
-            local.start = old.end;
-            local.end = old.end + beta;
-
-            if(local.end > i__3){
-                local.end = i__3 + 1;
-            }
-
-            if(gload.compare_exchange_strong(old, local, std::memory_order_seq_cst)){
-                for (j = local.start; j <= local.end; ++j) {
-                    i5 = i2 + (*le * j);
-                    i3 = i5 + incr;
-                    i4 = i3;
-                    sm = c__[i5] * up;
-
-                    // Dense reduction
-                    for (i__11 = *l1; i__11 < *l1 +div; ++i__11){
-                        sm += c__[i3] * u[i__11 * u_dim1 + 1];
-                        i3 += c__1;
-                    }
-                    // Sparse reduction
-                    for (int k = 0; k < idx.size(); k++){
-                        int cidx = idx[k];
-                        sm += c__[(cidx-1) + ((j-1)* m)] * val[k];
-                    }
-
-                    if (sm == 0.0) {
-                        continue;
-                    }
-                    
-                    sm *= b;
-                    c__[i5] += sm * up;
-
-                    // Dense update
-                    for (i__11 = *l1; i__11 < *l1 +div; ++i__11){
-                        c__[i4] += sm * u[i__11 * u_dim1 + 1];
-                        i4 += c__1;
-                    }
-                    // Sparse update
-                    for (int k = 0; k < idx.size(); k++){
-                        int cidx = idx[k];
-                        c__[(cidx-1) + ((j-1)* m)] += sm * val[k];
-                    }
-                }
-            }
-
-            if (local.start == local.end){
-                break;
-            }
-        }
-        idx.clear();
-        val.clear();
-
-        pthread_barrier_wait(&barr);
-
-        if (args->tid == 0){
-            gload.store({1,1});
-        }
-
-        pthread_barrier_wait(&barr);
-    }
-}
-
-static void standalone_householder(int i__1, int *n, int *m, double *e, int e_dim1, int c__1, int *le, std::vector<double> &up_array) {
-{
-    pthread_barrier_init(&barr, 0, num_threads);
-    gload.store({1, 1}); 
-    global_ctr.store(0);
-    pthread_t threads[num_threads];
-    args_t thread_args[num_threads];
-
-    for(int i=0; i<num_threads; i++){
-        thread_args[i].tid = i; 
-        thread_args[i].i__1 = i__1;
-        thread_args[i].m = m;   thread_args[i].n = n; 
-        thread_args[i].e = e; 
-        thread_args[i].e_dim1 = e_dim1;
-        thread_args[i].c__1 = c__1;
-        thread_args[i].le = le;
-        thread_args[i].up_array = &up_array;
-        pthread_create(&threads[i], NULL, thdwork, &thread_args[i]);
-    }    
-
-    for(int i =0; i<num_threads; i++){
-        pthread_join(threads[i], NULL);
-    }    
-
-    pthread_barrier_destroy(&barr);
-}
-
-
-/* static void standalone_householder(int i__1, int *n, int *m, double *e, int e_dim1, int c__1, int *le, std::vector<double> &up_array) {
-    const double one = 1.;
-    int i__, i__2, j, i__3, div;
-    int *lpivot, *l1;
-    double up;
-    double *u, *c__;
-    const int *ice, *icv, *ncv;
-
-    for (i__ = 1; i__ <= i__1; ++i__) {
-        i__2 = i__ + 1;
-        j = MIN2(i__2,*n);
-        i__2 = i__ + 1;
-        i__3 = *n - i__;
-
-        lpivot = &i__;
-        l1 = &i__2;
-        u = &e[i__ * e_dim1 + 1];
-        c__ = &e[j * e_dim1 + 1];
-        ice = &c__1;
-        icv = le;
-        ncv = &i__3;
-        div = lsei_n-lsi_n-1;
-
-        int u_dim1, u_offset;
-        double d__1;
-
-        double b;
-        int i__11, i2, i3, i4;
-        double cl, sm;
-        int incr;
-        double clinv;
-
-        u_dim1 = c__1;
-        u_offset = 1 + u_dim1;
-        u -= u_offset;
-        --c__;
-
-        // Declare sm1 fot use in loop fusion
-        double sm1 = 0;
-        int i5 = 0;
-        
-        std::vector<int> idx;
-        std::vector<double> val;
-        std::size_t nnz = 0;
-
-        if (0 >= *lpivot || *lpivot >= *l1 || *l1 > *m) {
-            continue;
-        }
-        cl = fabs(u[*lpivot * u_dim1 + 1]);
-
-        for (j = *l1; j <= *m; ++j) {
-            double temp_val = u[j * u_dim1 + 1];
-            if (j >= *l1 + div){
-                if (temp_val != 0.0){
-                    idx.push_back(j * u_dim1 + 1);
-                    val.push_back(temp_val);
-                    sm = fabs(temp_val);
-                    sm1 += temp_val * temp_val;
-                    nnz++;
-                }
-            }
-            else{
-                sm = fabs(temp_val);
-                sm1 += temp_val * temp_val;
-            }
-            cl = MAX2(sm,cl);
-        }
-        if (cl <= 0.0) {
-	    idx.clear();
-	    val.clear();
-            continue;
-        }
-        clinv = one / cl;
-
-        d__1 = u[*lpivot * u_dim1 + 1] * clinv;
-        sm = d__1 * d__1;
-
-        sm += sm1 * clinv * clinv;
-        cl *= sqrt(sm);
-        if (u[*lpivot * u_dim1 + 1] > 0.0) {
-            cl = -cl;
-        }
-        up = u[*lpivot * u_dim1 + 1] - cl;
-        up_array.push_back(up);
-        u[*lpivot * u_dim1 + 1] = cl;
-
-        if (i__3 <= 0) {
-            idx.clear();
-	    val.clear();	    
-            continue;
-        }
-        b = up * u[*lpivot * u_dim1 + 1];
-        if (b >= 0.0) {
-	    idx.clear();
-	    val.clear();
-            continue;
-        }
-        b = one / b;
-        i2 = 1 - *le + c__1 * (*lpivot - 1);
-        incr = c__1 * (*l1 - *lpivot);
-
-        //#pragma omp parallel for num_threads(10) private(i4, i__11, i3, sm, i5) //schedule(dynamic, 50)
-        for (j = 1; j <= i__3; ++j) {
-            i5 = i2 + (*le * j);
-            i3 = i5 + incr;
-            i4 = i3;
-            sm = c__[i5] * up;
-
-            // Dense reduction
-            for (i__11 = *l1; i__11 < *l1 +div; ++i__11){
-                sm += c__[i3] * u[i__11 * u_dim1 + 1];
-                i3 += c__1;
-            }
-            // Sparse reduction
-            for (int k = 0; k < idx.size(); k++){
-                int cidx = idx[k];
-                sm += c__[(cidx-1) + ((j-1)* *m)] * val[k];
-            }
-
-            if (sm == 0.0) {
-                continue;
-            }
-            
-            sm *= b;
-            c__[i5] += sm * up;
-
-            // Dense update
-            for (i__11 = *l1; i__11 < *l1 +div; ++i__11){
-                c__[i4] += sm * u[i__11 * u_dim1 + 1];
-                i4 += c__1;
-            }
-            // Sparse update
-            for (int k = 0; k < idx.size(); k++){
-                int cidx = idx[k];
-                c__[(cidx-1) + ((j-1)* *m)] += sm * val[k];
-            }
-        }
-        idx.clear();
-        val.clear();
-
-    }
-
-}
-*/
-
 unsigned int gctr = 0;
 static void lsi_(double *e, double *f, double *g, 
 	double *h__, int *le, int *me, int *lg, int *mg, 
@@ -1690,21 +1298,20 @@ static void lsi_(double *e, double *f, double *g,
 /*  QR-FACTORS OF E AND APPLICATION TO F */
     i__1 = *n;
 
-    std::vector<double> up_array;
     auto e1 = omp_get_wtime();
-    standalone_householder(i__1, n, me, e, e_dim1, c__1, le, up_array);
-
     for (i__ = 1; i__ <= i__1; ++i__) {
-        i__2 = i__ + 1;
-        j = MIN2(i__2,*n);
-        i__2 = i__ + 1;
-        i__3 = *n - i__;
-        h12_(&c__2, &i__, &i__2, me, &e[i__ * e_dim1 + 1], &c__1, &up_array[i__ - 1], &f[1],
-            &c__1, &c__1, &c__1);
+/* Computing MIN */
+	i__2 = i__ + 1;
+	j = MIN2(i__2,*n);
+	i__2 = i__ + 1;
+	i__3 = *n - i__;
+	h12_row_wise(&c__1, &i__, &i__2, me, &e[i__ * e_dim1 + 1], &c__1, &t, &e[j * 
+		e_dim1 + 1], &c__1, le, &i__3, lsei_n-lsi_n-1);
+/* L10: */
+	i__2 = i__ + 1;
+	h12_(&c__2, &i__, &i__2, me, &e[i__ * e_dim1 + 1], &c__1, &t, &f[1], &
+		c__1, &c__1, &c__1);
     }
-
-
-
     auto e2 = omp_get_wtime();
     std::cout<<"Time taken by QR factorization of E and application to F: "<<e2-e1<<'\n';
 
@@ -1713,13 +1320,7 @@ static void lsi_(double *e, double *f, double *g,
     i__2 = *mg;
     double lsi_start = omp_get_wtime();
 
-    // std::stringstream savefile1, savefile2;
-    // savefile1<<"gdata/g_temp_matrix_before_"<<gctr<<".csv";
-    // std::cout << "lg " << *lg << ", n " << *n << std::endl;
-/*
-    write_to_csv(g_temp_matrix, *lg, lsei_n, savefile1.str());
-*/
-    // pragma omp parallel for num_threads(20)
+    #pragma omp parallel for num_threads(20)
     for (i__ = 1; i__ <= i__2; ++i__) {
 	i__1 = *n;
 	for (j = 1; j <= i__1; ++j) {
@@ -1732,12 +1333,7 @@ static void lsi_(double *e, double *f, double *g,
 
 	h__[i__] -= ddot_sl__using_tempMat(n, g_temp_matrix, i__-1, &f[1], 1, lsei_n-lsi_n);
     }
-/*
-    savefile2<<"gdata/g_temp_matrix_after_"<<gctr<<".csv";
-    write_to_csv(g_temp_matrix, *lg, lsei_n, savefile2.str());
 
-    gctr++;
-*/
     for(int xyz = 0; xyz < *n; xyz++) {
     	for(int abc = 0; abc < *mg; abc++){
 		g[g_offset + ((xyz * *lg) + abc)] = g_temp_matrix[abc][lsei_n-lsi_n+xyz];

@@ -1253,7 +1253,7 @@ struct args_t{
     int m;
     double *e;
     int e_dim1;
-    int c__1;
+    int c_1;
     int *le;
     std::vector<double> *up_array;
 };
@@ -1265,18 +1265,44 @@ std::atomic<int> global_ctr;
 pthread_barrier_t barr;
 
 int num_threads = 1;
+static void standalone_householder(int i__1, int *n, int *m, double *e, int e_dim1, int c__1, int *le, std::vector<double> &up_array) {
+{
+    pthread_barrier_init(&barr, 0, num_threads);
+    gload.store({1, 1});
+    global_ctr.store(0);
+    pthread_t threads[num_threads];
+    args_t thread_args[num_threads];
+
+    for(int i=0; i<num_threads; i++){
+        thread_args[i].tid = i;
+        thread_args[i].i__1 = i__1;
+        thread_args[i].m = m;   thread_args[i].n = n;
+        thread_args[i].e = &e;
+        thread_args[i].e_dim1 = e_dim1;
+        thread_args[i].c_1 = c_1;
+        thread_args[i].le = &le;
+        thread_args[i].up_array = &up_array;
+        pthread_create(&threads[i], NULL, thdwork, &thread_args[i]);
+    }
+
+    for(int i =0; i<num_threads; i++){
+        pthread_join(threads[i], NULL);
+    }
+
+    pthread_barrier_destroy(&barr);
+}
 
 void* thdwork(void* params)
 {
     args_t* args = (struct args_t*)params;
-    int i__1 = args->i__1;
+    int i_1 = args->i_1;
     int n = args->n;
     int m = args->m;
     double *e = args->e;
     int e_dim1 = args->e_dim1;
-    int c__1 = args->c__1;
+    int c_1 = args->c_1;
     int *le = args->le;
-    std::vector<double> &up_array = *(args->up_array);
+    std::vector<double> &up_array = args->up_array;
 
     const double one = 1.;
     int i__, i__2, j, i__3, div;
@@ -1287,9 +1313,9 @@ void* thdwork(void* params)
 
     for (i__ = 1; i__ <= i__1; ++i__) {
         i__2 = i__ + 1;
-        j = MIN2(i__2,n);
+        j = MIN2(i__2,*n);
         i__2 = i__ + 1;
-        i__3 = n - i__;
+        i__3 = *n - i__;
 
         lpivot = &i__;
         l1 = &i__2;
@@ -1322,12 +1348,12 @@ void* thdwork(void* params)
         std::vector<double> val;
         std::size_t nnz = 0;
 
-        if (0 >= *lpivot || *lpivot >= *l1 || *l1 > m) {
+        if (0 >= *lpivot || *lpivot >= *l1 || *l1 > *m) {
             continue;
         }
         cl = fabs(u[*lpivot * u_dim1 + 1]);
 
-        for (j = *l1; j <= m; ++j) {
+        for (j = *l1; j <= *m; ++j) {
             double temp_val = u[j * u_dim1 + 1];
             if (j >= *l1 + div){
                 if (temp_val != 0.0){
@@ -1411,7 +1437,7 @@ void* thdwork(void* params)
                     // Sparse reduction
                     for (int k = 0; k < idx.size(); k++){
                         int cidx = idx[k];
-                        sm += c__[(cidx-1) + ((j-1)* m)] * val[k];
+                        sm += c__[(cidx-1) + ((j-1)* *m)] * val[k];
                     }
 
                     if (sm == 0.0) {
@@ -1429,7 +1455,7 @@ void* thdwork(void* params)
                     // Sparse update
                     for (int k = 0; k < idx.size(); k++){
                         int cidx = idx[k];
-                        c__[(cidx-1) + ((j-1)* m)] += sm * val[k];
+                        c__[(cidx-1) + ((j-1)* *m)] += sm * val[k];
                     }
                 }
             }
@@ -1443,41 +1469,13 @@ void* thdwork(void* params)
 
         pthread_barrier_wait(&barr);
 
-        if (args->tid == 0){
+        if (tid == 0){
             gload.store({1,1});
         }
 
         pthread_barrier_wait(&barr);
     }
 }
-
-static void standalone_householder(int i__1, int *n, int *m, double *e, int e_dim1, int c__1, int *le, std::vector<double> &up_array) {
-{
-    pthread_barrier_init(&barr, 0, num_threads);
-    gload.store({1, 1}); 
-    global_ctr.store(0);
-    pthread_t threads[num_threads];
-    args_t thread_args[num_threads];
-
-    for(int i=0; i<num_threads; i++){
-        thread_args[i].tid = i; 
-        thread_args[i].i__1 = i__1;
-        thread_args[i].m = m;   thread_args[i].n = n; 
-        thread_args[i].e = e; 
-        thread_args[i].e_dim1 = e_dim1;
-        thread_args[i].c__1 = c__1;
-        thread_args[i].le = le;
-        thread_args[i].up_array = &up_array;
-        pthread_create(&threads[i], NULL, thdwork, &thread_args[i]);
-    }    
-
-    for(int i =0; i<num_threads; i++){
-        pthread_join(threads[i], NULL);
-    }    
-
-    pthread_barrier_destroy(&barr);
-}
-
 
 /* static void standalone_householder(int i__1, int *n, int *m, double *e, int e_dim1, int c__1, int *le, std::vector<double> &up_array) {
     const double one = 1.;
@@ -1719,7 +1717,7 @@ static void lsi_(double *e, double *f, double *g,
 /*
     write_to_csv(g_temp_matrix, *lg, lsei_n, savefile1.str());
 */
-    // pragma omp parallel for num_threads(20)
+    #pragma omp parallel for num_threads(20)
     for (i__ = 1; i__ <= i__2; ++i__) {
 	i__1 = *n;
 	for (j = 1; j <= i__1; ++j) {

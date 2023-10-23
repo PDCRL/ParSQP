@@ -160,8 +160,13 @@ if (NLOPT_CXX OR NLOPT_PYTHON OR NLOPT_GUILE OR NLOPT_OCTAVE)
   if (SYSTEM_HAS_CXX)
     check_cxx_compiler_flag ("-std=c++17" SUPPORTS_STDCXX17)
     if (SUPPORTS_STDCXX17)
+#<<<<<<< HEAD
       #set (CMAKE_CXX_FLAGS "-std=c++17 -O3 -march=native -ffast-math -fpermissive -fopenmp ${CMAKE_CXX_FLAGS}")
       set (CMAKE_CXX_FLAGS "-std=c++17 -march=native -ffast-math -fpermissive -fopenmp ${CMAKE_CXX_FLAGS}")
+#=======
+      set (CMAKE_CXX_FLAGS "-std=c++17 -O3 -march=native -ffast-math -fpermissive -fopenmp ${CMAKE_CXX_FLAGS}")
+     # set (CMAKE_CXX_FLAGS "-std=c++17 -march=native -ffast-math -fpermissive -fopenmp ${CMAKE_CXX_FLAGS}")
+#>>>>>>> 521ca461c558f0a6dd197824b17321b5f366461c
       if (NLOPT_CXX)
         set (NLOPT_CXX11 ON)
       endif ()
