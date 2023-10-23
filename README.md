@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 [![Latest Docs](https://readthedocs.org/projects/nlopt/badge/?version=latest)](http://nlopt.readthedocs.io/en/latest/)
 [![Build Status](https://github.com/stevengj/nlopt/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/stevengj/nlopt/actions/workflows/build.yml)
 
@@ -33,16 +32,3 @@ even though it exports a C API).  See the [C reference manual](https://nlopt.rea
 There are also interfaces for [C++](https://nlopt.readthedocs.io/en/latest/NLopt_C-plus-plus_Reference/), [Fortran](https://nlopt.readthedocs.io/en/latest/NLopt_Fortran_Reference/), [Python](https://nlopt.readthedocs.io/en/latest/NLopt_Python_Reference/), [Matlab or GNU Octave](https://nlopt.readthedocs.io/en/latest/NLopt_Matlab_Reference/), [OCaml](https://bitbucket.org/mkur/nlopt-ocaml),
 [GNU Guile](https://nlopt.readthedocs.io/en/latest/NLopt_Guile_Reference/), [GNU R](https://www.ucl.ac.uk/~uctpjyy/nloptr.html), [Lua](https://github.com/rochus-keller/LuaNLopt), [Rust](https://github.com/jesskfullwood/rust-nlopt), and [Julia](https://github.com/JuliaOpt/NLopt.jl).  Interfaces for other languages may
 be added in the future.
-=======
-1. Clone the nlopt library from https://github.com/stevengj/nlopt.git
-2. Replace CMakeLists.txt present in nlopt folder with our CMakeLists.txt
-3. Replace slsqp.c from nlopt/src/algs/slsqp/slsqp.c with our slsqp.cpp
-
-Steps To Build Nlopt:
-1. cd nlopt
-2. mkdir build
-3. cd build
-4. cmake ..
-5. make
-6. sudo make install
->>>>>>> 521ca461c558f0a6dd197824b17321b5f366461c
