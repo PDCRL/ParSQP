@@ -1241,6 +1241,8 @@ L50:
 
 int lsi_n = 0, lsei_n=0;
 
+std::mutex mtx;
+
 struct load{
     int start;
     int end;
@@ -1263,11 +1265,12 @@ std::atomic<load> gload;
 std::atomic<int> global_ctr;
 pthread_barrier_t barr;
 
-int num_threads = 1;
+int num_threads = 2;
 
 void* thdwork(void* params)
 {
     args_t* args = (struct args_t*)params;
+    int tid = args->tid;
     int i__1 = args->i__1;
     int *n = args->n;
     int *m = args->m;
@@ -1284,10 +1287,15 @@ void* thdwork(void* params)
     double *u, *c__;
     const int *ice, *icv, *ncv;
 
+    double cl = fabs(e[e_dim1 + 1]);
+    
+    mtx.lock();
+    std::cout << tid << " " << i__1 << " " <<  *n << " " << *m << " " << e_dim1 << " " << c__1 << " " << *le << std::endl;
+    mtx.unlock();
+
     for (i__ = 1; i__ <= i__1; ++i__) {
         i__2 = i__ + 1;
         j = MIN2(i__2,*n);
-        i__2 = i__ + 1;
         i__3 = *n - i__;
 
         lpivot = &i__;
@@ -1321,14 +1329,19 @@ void* thdwork(void* params)
         std::vector<double> val;
         std::size_t nnz = 0;
 
-        if (0 >= *lpivot || *lpivot >= *l1 || *l1 > *m) {
+        if (*l1 > *m) {
             continue;
         }
-        cl = fabs(u[*lpivot * u_dim1 + 1]);
+
+        // cl = fabs(u[*lpivot * u_dim1 + 1]);
+        mtx.lock();
+	    std::cout << lsei_n << " " << lsi_n << " DIV" << div << std::endl; 
+        mtx.unlock();
 
         for (j = *l1; j <= *m; ++j) {
             double temp_val = u[j * u_dim1 + 1];
             if (j >= *l1 + div){
+		        // std::cout << j << " " << *l1 << " " << div << " " << *m << "YESSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS" << std::endl;
                 if (temp_val != 0.0){
                     idx.push_back(j * u_dim1 + 1);
                     val.push_back(temp_val);
@@ -1338,84 +1351,164 @@ void* thdwork(void* params)
                 }
             }
             else{
+		        // std::cout << j << " " << *l1 << " " << div <<" " << *m << "NOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO" << std::endl;
                 sm = fabs(temp_val);
                 sm1 += temp_val * temp_val;
             }
             cl = MAX2(sm,cl);
         }
+
         if (cl <= 0.0) {
-	    idx.clear();
-	    val.clear();
-            continue;
+            idx.clear();
+            val.clear();
+                continue;
         }
+
         clinv = one / cl;
 
         d__1 = u[*lpivot * u_dim1 + 1] * clinv;
         sm = d__1 * d__1;
-
         sm += sm1 * clinv * clinv;
         cl *= sqrt(sm);
-        if (u[*lpivot * u_dim1 + 1] > 0.0) {
-            cl = -cl;
-        }
+
+        if (u[*lpivot * u_dim1 + 1] > 0.0) { cl = -cl; }
+
         up = u[*lpivot * u_dim1 + 1] - cl;
         up_array.push_back(up);
-        u[*lpivot * u_dim1 + 1] = cl;
+        
+        int old = i__ - 1;
+        if(global_ctr.compare_exchange_strong(old, i__, std::memory_order_seq_cst)){
+            u[*lpivot * u_dim1 + 1] = cl;
+        }
 
         if (i__3 <= 0) {
             idx.clear();
-	    val.clear();	    
+	        val.clear();	    
             continue;
         }
-        b = up * u[*lpivot * u_dim1 + 1];
+
+        b = up * cl;
         if (b >= 0.0) {
-	    idx.clear();
-	    val.clear();
+            idx.clear();
+            val.clear();
             continue;
         }
+
         b = one / b;
         i2 = 1 - *le + c__1 * (*lpivot - 1);
         incr = c__1 * (*l1 - *lpivot);
 
+        // std::cout << *le << " " << *lpivot << " " << i2 << " incr" << incr << std::endl;
+
         //#pragma omp parallel for num_threads(10) private(i4, i__11, i3, sm, i5) //schedule(dynamic, 50)
-        for (j = 1; j <= i__3; ++j) {
-            i5 = i2 + (*le * j);
-            i3 = i5 + incr;
-            i4 = i3;
-            sm = c__[i5] * up;
+        while(1)
+        {
+            load old, local;
+            old = gload.load();
+            local = old;
 
-            // Dense reduction
-            for (i__11 = *l1; i__11 < *l1 +div; ++i__11){
-                sm += c__[i3] * u[i__11 * u_dim1 + 1];
-                i3 += c__1;
-            }
-            // Sparse reduction
-            for (int k = 0; k < idx.size(); k++){
-                int cidx = idx[k];
-                sm += c__[(cidx-1) + ((j-1)* *m)] * val[k];
+            local.start = old.end;
+            local.end = old.end + beta;
+
+            if(local.end > i__3){
+                local.end = i__3 + 1;
             }
 
-            if (sm == 0.0) {
-                continue;
-            }
-            
-            sm *= b;
-            c__[i5] += sm * up;
+            // mtx.lock();
+            // std::cout << tid << local.start << " Local End " << local.end << std::endl;
+            // mtx.unlock();
 
-            // Dense update
-            for (i__11 = *l1; i__11 < *l1 +div; ++i__11){
-                c__[i4] += sm * u[i__11 * u_dim1 + 1];
-                i4 += c__1;
+            if(gload.compare_exchange_strong(old, local, std::memory_order_seq_cst)){
+                
+                mtx.lock();
+                std::cout << i__ << " " << local.start << " Local End " << local.end  << "tid: " << tid << "Line: " << __LINE__ << std::endl;
+                mtx.unlock();
+
+                for (j = local.start; j < local.end; ++j) {
+
+                    i5 = i2 + (*le * j);
+                    i3 = i5 + incr;
+                    i4 = i3;
+                    sm = c__[i5] * up;
+
+                    // mtx.lock();
+                    // std::cout << "tid: " << tid << "Line: " << __LINE__ << std::endl;
+                    // mtx.unlock();
+                    
+                    // Dense reduction
+                    for (i__11 = *l1; i__11 < *l1 +div; ++i__11){
+                        sm += c__[i3] * u[i__11 * u_dim1 + 1];
+                        i3 += c__1;
+                    }
+
+                    // mtx.lock();
+                    // std::cout << "tid: " << tid << "Line: " << __LINE__ << " " << *l1 +div << " i3 " << i3 << std::endl;
+                    // mtx.unlock();
+
+                    // Sparse reduction
+                    for (int k = 0; k < idx.size(); k++){
+                        int cidx = idx[k];
+                        sm += c__[(cidx-1) + ((j-1)* *m)] * val[k];
+                    }
+
+                    // mtx.lock();
+                    // std::cout << "tid: " << tid << "Line: " << __LINE__ << std::endl;
+                    // mtx.unlock();
+
+                    if (sm == 0.0) {
+                        continue;
+                    }
+                    
+                    sm *= b;
+                    c__[i5] += sm * up;
+
+                    // Dense update
+                    for (i__11 = *l1; i__11 < *l1 +div; ++i__11){
+                        c__[i4] += sm * u[i__11 * u_dim1 + 1];
+                        i4 += c__1;
+                    }
+
+                    // mtx.lock();
+                    // std::cout << "tid: " << tid << "Line: " << __LINE__ << std::endl;
+                    // mtx.unlock();
+
+                    // Sparse update
+                    for (int k = 0; k < idx.size(); k++){
+                        int cidx = idx[k];
+                        c__[(cidx-1) + ((j-1)* *m)] += sm * val[k];
+                    }
+
+                    // mtx.lock();
+                    // std::cout << "tid: " << tid << "Line: " << __LINE__ << " " << local.end << std::endl;
+                    // mtx.unlock();
+                }
             }
-            // Sparse update
-            for (int k = 0; k < idx.size(); k++){
-                int cidx = idx[k];
-                c__[(cidx-1) + ((j-1)* *m)] += sm * val[k];
+
+            if (local.start == local.end){
+                break;
             }
         }
+
+        mtx.lock();
+        std::cout << "tid: " << tid << "Line: " << __LINE__ << std::endl;
+        mtx.unlock();
+
         idx.clear();
         val.clear();
 
+        pthread_barrier_wait(&barr);
+
+        if(lpivot < n){
+            u = &e[(i__ + 1) * e_dim1 + 1];
+            u -= u_offset;
+            cl = fabs(u[(i__ + 1) * u_dim1 + 1]);
+        }
+
+        if (args->tid == 0){
+            gload.store({1,1});
+        }
+
+        pthread_barrier_wait(&barr);
     }
 
 }
@@ -1606,6 +1699,7 @@ static void lsi_(double *e, double *f, double *g,
     const double one = 1.;
 
     lsi_n = *n;
+    // std::cout << lsi_n << " " << *n << "LSiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii" << std::endl;
     /* System generated locals */
     int e_dim1, e_offset, g_dim1, g_offset, i__1, i__2, i__3;
     double d__1;
@@ -1982,6 +2076,7 @@ static void lsei_(double *c__, double *d__, double *e,
 {
     /* Initialized data */
     lsei_n = *n;
+    // std::cout << lsei_n << " " << *n << "ANSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS" << std::endl;
     const double epmach = 2.22e-16;
 
     /* System generated locals */
