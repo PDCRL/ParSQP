@@ -160,13 +160,8 @@ if (NLOPT_CXX OR NLOPT_PYTHON OR NLOPT_GUILE OR NLOPT_OCTAVE)
   if (SYSTEM_HAS_CXX)
     check_cxx_compiler_flag ("-std=c++17" SUPPORTS_STDCXX17)
     if (SUPPORTS_STDCXX17)
-#<<<<<<< HEAD
-      #set (CMAKE_CXX_FLAGS "-std=c++17 -O3 -march=native -ffast-math -fpermissive -fopenmp ${CMAKE_CXX_FLAGS}")
-      set (CMAKE_CXX_FLAGS "-std=c++17 -march=native -ffast-math -fpermissive -fopenmp ${CMAKE_CXX_FLAGS}")
-#=======
-      set (CMAKE_CXX_FLAGS "-std=c++17 -O3 -march=native -ffast-math -fpermissive -fopenmp ${CMAKE_CXX_FLAGS}")
-     # set (CMAKE_CXX_FLAGS "-std=c++17 -march=native -ffast-math -fpermissive -fopenmp ${CMAKE_CXX_FLAGS}")
-#>>>>>>> 521ca461c558f0a6dd197824b17321b5f366461c
+      set (CMAKE_CXX_FLAGS "-std=c++17 -O3 -march=native -ffast-math -fpermissive -fopenmp -ltbb -lpthread ${CMAKE_CXX_FLAGS}")
+      # set (CMAKE_CXX_FLAGS "-std=c++17 -march=native -ffast-math -fpermissive -fopenmp ${CMAKE_CXX_FLAGS}")
       if (NLOPT_CXX)
         set (NLOPT_CXX11 ON)
       endif ()
@@ -240,10 +235,12 @@ install (FILES ${NLOPT_HEADERS} DESTINATION ${RELATIVE_INSTALL_INCLUDE_DIR})
 set (nlopt_lib nlopt)
 add_library (${nlopt_lib} ${NLOPT_SOURCES})
 add_dependencies(${nlopt_lib} generate-cpp)
-target_link_libraries (${nlopt_lib} ${M_LIBRARY})
+target_link_libraries (${nlopt_lib} ${M_LIBRARY} /opt/intel/oneapi/tbb/latest/lib/libtbb.so)
 
 set_target_properties (${nlopt_lib} PROPERTIES SOVERSION ${SO_MAJOR})
 set_target_properties (${nlopt_lib} PROPERTIES VERSION "${SO_MAJOR}.${SO_MINOR}.${SO_PATCH}")
+set_target_properties(${nlopt_lib} PROPERTIES INSTALL_RPATH "/opt/intel/oneapi/tbb/latest/lib")
+
 
 #==============================================================================
 # INCLUDE DIRECTORIES
@@ -251,6 +248,7 @@ set_target_properties (${nlopt_lib} PROPERTIES VERSION "${SO_MAJOR}.${SO_MINOR}.
 target_include_directories (${nlopt_lib} PRIVATE
   ${PROJECT_BINARY_DIR}/src/api
   ${PROJECT_BINARY_DIR}
+  /opt/intel/oneapi/tbb/latest/include
   src/algs/stogo
   src/algs/ags
   src/util

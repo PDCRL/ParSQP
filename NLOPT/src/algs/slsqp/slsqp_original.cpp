@@ -749,17 +749,17 @@ static void lsi_(double *e, double *f, double *g,
 /*  QR-FACTORS OF E AND APPLICATION TO F */
     i__1 = *n;
     for (i__ = 1; i__ <= i__1; ++i__) {
-/* Computing MIN */
-	i__2 = i__ + 1;
-	j = MIN2(i__2,*n);
-	i__2 = i__ + 1;
-	i__3 = *n - i__;
-	h12_(&c__1, &i__, &i__2, me, &e[i__ * e_dim1 + 1], &c__1, &t, &e[j * 
-		e_dim1 + 1], &c__1, le, &i__3);
-/* L10: */
-	i__2 = i__ + 1;
-	h12_(&c__2, &i__, &i__2, me, &e[i__ * e_dim1 + 1], &c__1, &t, &f[1], &
-		c__1, &c__1, &c__1);
+    /* Computing MIN */
+        i__2 = i__ + 1;
+        j = MIN2(i__2,*n);
+        i__2 = i__ + 1;
+        i__3 = *n - i__;
+        h12_(&c__1, &i__, &i__2, me, &e[i__ * e_dim1 + 1], &c__1, &t, &e[j * 
+            e_dim1 + 1], &c__1, le, &i__3);
+    /* L10: */
+        i__2 = i__ + 1;
+        h12_(&c__2, &i__, &i__2, me, &e[i__ * e_dim1 + 1], &c__1, &t, &f[1], &
+            c__1, &c__1, &c__1);
     }
 /*  TRANSFORM G AND H TO GET LEAST DISTANCE PROBLEM */
     *mode = 5;

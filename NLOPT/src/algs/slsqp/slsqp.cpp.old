@@ -1520,19 +1520,19 @@ static void lsi_(double *e, double *f, double *g,
 
     auto e1 = omp_get_wtime();
     for (i__ = 1; i__ <= i__1; ++i__) {
-/* Computing MIN */
-	i__2 = i__ + 1;
-	j = MIN2(i__2,*n);
-	i__2 = i__ + 1;
-	i__3 = *n - i__;
-	//printf("4th h12 instance\n");
-	h12_row_wise(&c__1, &i__, &i__2, me, &e[i__ * e_dim1 + 1], &c__1, &t, &e[j * 
-		e_dim1 + 1], &c__1, le, &i__3);
-/* L10: */
-	i__2 = i__ + 1;
-	//printf("5th h12 instance\n");
-	h12_(&c__2, &i__, &i__2, me, &e[i__ * e_dim1 + 1], &c__1, &t, &f[1], &
-		c__1, &c__1, &c__1);
+    /* Computing MIN */
+        i__2 = i__ + 1;
+        j = MIN2(i__2,*n);
+        i__2 = i__ + 1;
+        i__3 = *n - i__;
+        //printf("4th h12 instance\n");
+        h12_row_wise(&c__1, &i__, &i__2, me, &e[i__ * e_dim1 + 1], &c__1, &t, &e[j * 
+            e_dim1 + 1], &c__1, le, &i__3);
+    /* L10: */
+        i__2 = i__ + 1;
+        //printf("5th h12 instance\n");
+        h12_(&c__2, &i__, &i__2, me, &e[i__ * e_dim1 + 1], &c__1, &t, &f[1], &
+            c__1, &c__1, &c__1);
     }
     auto e2 = omp_get_wtime();
     std::cout<<"Time taken by QR factorization of E and application to F: "<<e2-e1<<'\n';
