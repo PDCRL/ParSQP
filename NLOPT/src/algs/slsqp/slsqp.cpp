@@ -14,7 +14,7 @@
 #include <string.h>
 #include <time.h>
 
-#include "/home/rahul/eshwar/accuracy_test/integrate/intel.cpp"
+#include "ParSQP/Parallel_QR/main.cpp"
 #include "slsqp.h"
 #include <algorithm>
 #include <fstream>
@@ -1405,10 +1405,10 @@ static void lsi_(double *e, double *f, double *g, double *h__, int *le, int *me,
   std::vector<double> up_array;
   auto e1 = omp_get_wtime();
   e -= e_offset;
-  standalone_householder(*n, *me, e, up_array);
+  //standalone_householder(*n, *me, e, up_array);
   std::cout << "Matrix dimensions before QR, R: " << *n << ", C: " << *me
             << std::endl;
-  // dagqrf(e, *n, *me, up_array);
+  dagqrf(e, *n, *me, up_array);
   // e -= e_offset;
   auto e2 = omp_get_wtime();
   for (i__ = 1; i__ <= i__1; ++i__) {
