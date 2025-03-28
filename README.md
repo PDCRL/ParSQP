@@ -66,4 +66,4 @@ To solve an optimization problem using the SLSQP algorithm with your newly built
 
     Use `-fopenmp` if parallelism is desired (and supported by your compiler).
 
-3.  **Run the Generated Binary :**
+3.  **Run the Generated Binary**
