@@ -38,32 +38,10 @@ This repository contains an SLSQP-only version of the NLOPT library, enhanced wi
 
     After installation, you should find `include`, `lib`, and possibly `bin` folders under `nlopt_install`.
 
-3.  **ParallelQR Directory**
+    For more detailed information, visit https://nlopt.readthedocs.io/en/latest/NLopt_Installation/
+
+4.  **ParallelQR Directory**
 
     The `ParallelQR` folder **does not require a separate build step**. All necessary code is already included in the main CMake configuration of `NLOPT`.
 
 ---
-
-## Using the Installed Library
-
-To solve an optimization problem using the SLSQP algorithm with your newly built library:
-
-1.  **Write/Obtain an Optimization Problem**
-    For instance, `planeproblem.cpp` implementing `nlopt_optimize` calls.
-
-2.  **Compile & Link Against NLOPT:**
-
-    ```bash
-    g++ -O2 -std=c++11 \
-        -I/path/to/nlopt_install/include \
-        -L/path/to/nlopt_install/lib \
-        -fopenmp \
-        planeproblem.cpp \
-        -lnlopt -lm -pthread \
-        -o run_optimization
-    ```
-    Update include (`-I`) and library (`-L`) paths to match your install location.
-
-    Use `-fopenmp` if parallelism is desired (and supported by your compiler).
-
-3.  **Run the Generated Binary**
