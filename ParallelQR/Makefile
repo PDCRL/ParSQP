@@ -1,5 +1,5 @@
 # Makefile
-MAIN_SRC = call.cpp
+MAIN_SRC = main.cpp
 
 # Compiler
 CXX = g++ 
