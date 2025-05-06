@@ -35,6 +35,12 @@ set(SO_MINOR 11)
 set(SO_PATCH 1)
 #==============================================================================
 
+#==============================================================================
+# Find system TBB
+#==============================================================================
+find_package(TBB REQUIRED COMPONENTS tbb)
+#==============================================================================
+
 list (APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 option (NLOPT_CXX "enable cxx routines" ON)
@@ -235,11 +241,11 @@ install (FILES ${NLOPT_HEADERS} DESTINATION ${RELATIVE_INSTALL_INCLUDE_DIR})
 set (nlopt_lib nlopt)
 add_library (${nlopt_lib} ${NLOPT_SOURCES})
 add_dependencies(${nlopt_lib} generate-cpp)
-target_link_libraries (${nlopt_lib} ${M_LIBRARY} /opt/intel/oneapi/tbb/latest/lib/libtbb.so)
+target_link_libraries (${nlopt_lib} ${M_LIBRARY} TBB::tbb)
 
 set_target_properties (${nlopt_lib} PROPERTIES SOVERSION ${SO_MAJOR})
 set_target_properties (${nlopt_lib} PROPERTIES VERSION "${SO_MAJOR}.${SO_MINOR}.${SO_PATCH}")
-set_target_properties(${nlopt_lib} PROPERTIES INSTALL_RPATH "/opt/intel/oneapi/tbb/latest/lib")
+#set_target_properties(${nlopt_lib} PROPERTIES INSTALL_RPATH "/opt/intel/oneapi/tbb/latest/lib")
 
 
 #==============================================================================
@@ -248,7 +254,7 @@ set_target_properties(${nlopt_lib} PROPERTIES INSTALL_RPATH "/opt/intel/oneapi/t
 target_include_directories (${nlopt_lib} PRIVATE
   ${PROJECT_BINARY_DIR}/src/api
   ${PROJECT_BINARY_DIR}
-  /opt/intel/oneapi/tbb/latest/include
+  #/opt/intel/oneapi/tbb/latest/include
   src/algs/stogo
   src/algs/ags
   src/util
