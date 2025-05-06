@@ -14,7 +14,7 @@
 #include <string.h>
 #include <time.h>
 
-#include "ParSQP/ParallelQR/main.cpp"
+#include "../../../../ParallelQR/main.cpp"
 #include "slsqp.h"
 #include <algorithm>
 #include <fstream>
