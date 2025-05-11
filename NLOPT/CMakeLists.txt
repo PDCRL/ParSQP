@@ -246,8 +246,17 @@ target_link_libraries (${nlopt_lib} ${M_LIBRARY} TBB::tbb)
 set_target_properties (${nlopt_lib} PROPERTIES SOVERSION ${SO_MAJOR})
 set_target_properties (${nlopt_lib} PROPERTIES VERSION "${SO_MAJOR}.${SO_MINOR}.${SO_PATCH}")
 #set_target_properties(${nlopt_lib} PROPERTIES INSTALL_RPATH "/opt/intel/oneapi/tbb/latest/lib")
+#### new ADD ###
+option(BUILD_SLSQP_WITH_PARALLEL_QR "Enable Parallel QR in SLSQP algorithm" OFF) # Default to OFF (sequential)
 
-
+if(BUILD_SLSQP_WITH_PARALLEL_QR)
+    message(STATUS "NLOPT/SLSQP: Compiling with Parallel QR enabled.")
+    # Add this definition to the target that compiles slsqp.cpp (likely 'nlopt')
+    target_compile_definitions(nlopt PRIVATE USE_SLSQP_PARALLEL_QR)
+else()
+    message(STATUS "NLOPT/SLSQP: Compiling with Sequential QR.")
+endif()
+#### new ADD ###
 #==============================================================================
 # INCLUDE DIRECTORIES
 #==============================================================================
