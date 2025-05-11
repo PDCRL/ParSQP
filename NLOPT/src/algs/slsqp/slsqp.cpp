@@ -1405,11 +1405,23 @@ static void lsi_(double *e, double *f, double *g, double *h__, int *le, int *me,
   std::vector<double> up_array;
   auto e1 = omp_get_wtime();
   e -= e_offset;
-  //standalone_householder(*n, *me, e, up_array);
   std::cout << "Matrix dimensions before QR, R: " << *n << ", C: " << *me
             << std::endl;
-  dagqrf(e, *n, *me, up_array);
-  // e -= e_offset;
+  #ifdef USE_SLSQP_PARALLEL_QR
+    // Call your dagqrf function
+    std::cout << "[INFO] SLSQP using PARALLEL QR (dagqrf)." << std::endl;
+    dagqrf(e, *n, *me, up_array); // Ensure 'up_array' is correctly defined and passed
+  #else
+    // Call the original sequential QR logic
+    std::cout << "[INFO] SLSQP using SEQUENTIAL QR (e.g., standalone_householder or original h12_ calls)." << std::endl;
+    // standalone_householder(*n, *me, e, up_array); // Or replicate original h12_ logic here
+    // IMPORTANT: Ensure this 'else' block correctly implements/calls the original sequential QR.
+  #endif
+  // //standalone_householder(*n, *me, e, up_array);
+  // std::cout << "Matrix dimensions before QR, R: " << *n << ", C: " << *me
+  //           << std::endl;
+  // dagqrf(e, *n, *me, up_array);
+  // // e -= e_offset;
   auto e2 = omp_get_wtime();
   for (i__ = 1; i__ <= i__1; ++i__) {
     i__2 = i__ + 1;
