@@ -1858,8 +1858,8 @@ static void lsei_(double *c__, double *d__, double *e, double *f, double *g,
       g_temp_matrix[abc] = (double *)malloc((*n) * sizeof(double));
     }
   }
-  iteration_count += 1;
-
+iteration_count += 1;
+ printf("Iteration number %d\n", iteration_count); 
 #pragma omp parallel for num_threads(5)
   for (int xyz = 0; xyz < *n; xyz++) {
     for (int abc = 0; abc < *le; abc++) {
