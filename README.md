@@ -34,7 +34,7 @@ This repository contains an SLSQP-only version of the NLOPT library, enhanced wi
     make
     make install
     ```
-    Replace `/path/to/nlopt_install` with your desired installation directory .
+    Replace `/path/to/nlopt_install` with your desired installation directory. Make sure the folder in the path is already exist. 
 
     After installation, you should find `include`, `lib`, and possibly `bin` folders under `nlopt_install`.
 
