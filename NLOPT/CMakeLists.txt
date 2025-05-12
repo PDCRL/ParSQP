@@ -19,7 +19,7 @@ if (NOT DEFINED CMAKE_BUILD_TYPE)
 endif ()
 
 project (nlopt)
-
+cmake_policy(SET CMP0074 NEW) 
 #==============================================================================
 # version
 set (NLOPT_MAJOR_VERSION "2")
