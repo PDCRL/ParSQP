@@ -3292,7 +3292,7 @@ nlopt_result nlopt_slsqp(unsigned n, nlopt_func f, void *f_data,
 	if(var1 == 1) {
 		var1 = 0;
 		t2 = omp_get_wtime();
-    	  	std::cout << "Time taken by SLSQP: " << t2 - t1 << std::endl;
+    	  	//std::cout << "Time taken by SLSQP: " << t2 - t1 << std::endl;
 	}
 	  switch (mode) {
 	  case -1:  /* objective & gradient evaluation */
