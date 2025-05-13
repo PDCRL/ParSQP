@@ -467,7 +467,7 @@ L80:
     return;
 } /* h12_ */
 
-int print_flag = 0;
+
 static void h12_copy(const int *mode, int *lpivot, int *l1, 
 		 int *m, double *u, const int *iue, double *up, 
 		 double *c__, const int *ice, const int *icv, const int *ncv, double **temp_matrix)
@@ -3292,12 +3292,7 @@ nlopt_result nlopt_slsqp(unsigned n, nlopt_func f, void *f_data,
 	if(var1 == 1) {
 		var1 = 0;
 		t2 = omp_get_wtime();
-		if(!print_flag)
-		{
-			std::cout << "Time taken by SLSQP: " << t2 - t1 << std::endl;
-			print_flag = 1;
-		}
-    	  	
+		std::cout << "Time taken by SLSQP: " << t2 - t1 << std::endl;	
 	}
 	  switch (mode) {
 	  case -1:  /* objective & gradient evaluation */
