@@ -617,7 +617,7 @@ L80:
     return;
 } /* h12_ */
 
-
+static bool g_slsqp_qr_factorization_performed = false;
 void write_to_csv(double** matrix, const std::size_t rows, const std::size_t cols, const std::string& filename, bool keep_original=false){
 
 	std::size_t sum = 0;
@@ -1411,10 +1411,12 @@ static void lsi_(double *e, double *f, double *g,
         std::cout << "[INFO] SLSQP using PARALLEL QR (dagqrf)." << std::endl;
         dagqrf(e,*n,*me,up_array);
         e-=e_offset;
+	g_slsqp_qr_factorization_performed = true;
     #else
         std::cout << "[INFO] SLSQP using SEQUENTIAL QR (standalone_householder)." << std::endl;
         e -= e_offset;         
         standalone_householder(*n, *me, e, up_array);
+	g_slsqp_qr_factorization_performed = true;
     #endif
 
     for (i__ = 1; i__ <= i__1; ++i__) {
@@ -1831,7 +1833,7 @@ static void lsei_(double *c__, double *d__, double *e,
 		h1_copy(&c__1, &i__, &i__2, n, &c__[i__ + c_dim1], lc, &w[iw + i__], &
 			c__[j + c_dim1], lc, &c__1, &i__3, temp_matrix);
 	}
-
+	g_slsqp_qr_factorization_performed = true; // C matrix QR constructed
         //CSR Format Logic
 
         row_ptr.push_back(0);
@@ -3278,7 +3280,7 @@ nlopt_result nlopt_slsqp(unsigned n, nlopt_func f, void *f_data,
 
      do {
 	double t1, t2;
-	
+	g_slsqp_qr_factorization_performed = false;
 	if(mode == -1 || mode == -2) {
 		t1 = omp_get_wtime();
 		var1 = 1;
@@ -3292,6 +3294,7 @@ nlopt_result nlopt_slsqp(unsigned n, nlopt_func f, void *f_data,
 	if(var1 == 1) {
 		var1 = 0;
 		t2 = omp_get_wtime();
+		if(g_slsqp_qr_factorization_performed)
 		std::cout << "Time taken by SLSQP: " << t2 - t1 << std::endl;	
 	}
 	  switch (mode) {
