@@ -1431,7 +1431,7 @@ static void lsi_(double *e, double *f, double *g,
 
 
     auto e2 = omp_get_wtime();
-    std::cout<<"Time taken by QR factorization of E and application to F: "<<e2-e1<<'\n';
+    std::cout<<"Time taken by QR factorization: "<<e2-e1<<'\n';
 
 /*  TRANSFORM G AND H TO GET LEAST DISTANCE PROBLEM */
     *mode = 5;
