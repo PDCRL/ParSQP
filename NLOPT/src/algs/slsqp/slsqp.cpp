@@ -1870,8 +1870,9 @@ static void lsei_(double *c__, double *d__, double *e,
 	}
     }
     iteration_count += 1;
-    printf("Iteration number %d\n", iteration_count);
     std::cout<<"------------------------------------------------------------------------------------------\n";
+    printf("Iteration number %d\n", iteration_count);
+    
     for(int xyz = 0; xyz < *n; xyz++) {
     	for(int abc = 0; abc < *le; abc++){
 		e_temp_matrix[abc][xyz] = e[e_offset + ((xyz * *le) + abc)];
