@@ -1408,7 +1408,7 @@ static void lsi_(double *e, double *f, double *g,
     
 
     #ifdef USE_SLSQP_PARALLEL_QR
-        std::cout << "[INFO] SLSQP using PARALLEL QR (dagqrf). Matrix dims: " << *n << "x" << *me << std::endl;
+        std::cout << "[INFO] SLSQP using PARALLEL QR (dagqrf)." << std::endl;
         dagqrf(e,*n,*me,up_array);
         e-=e_offset;
     #else
@@ -1468,8 +1468,8 @@ static void lsi_(double *e, double *f, double *g,
     }
 
     double lsi_end = omp_get_wtime();
-    printf("Time taken by back substitution in lsi : %0.5f\n", lsi_end-lsi_start);
-    std::cout<<"------------------------------------------------------------------------------------------\n";
+    //printf("Time taken by back substitution in lsi : %0.5f\n", lsi_end-lsi_start);
+    //std::cout<<"------------------------------------------------------------------------------------------\n";
 /*  SOLVE LEAST DISTANCE PROBLEM */
     ldp_(&g[g_offset], lg, mg, n, &h__[1], &x[1], xnorm, &w[1], &jw[1], mode);
     if (*mode != 1) {
@@ -1913,8 +1913,8 @@ static void lsei_(double *c__, double *d__, double *e,
     }
     
     h12t2 = omp_get_wtime();
-    std::cout<<"------------------------------------------------------------------------------------------\n";
-    printf("Time taken by h12 function in 10/11/12 instances is : %0.5f, Line-1771\n", h12t2 - h12t1);
+    //std::cout<<"------------------------------------------------------------------------------------------\n";
+    //printf("Time taken by h12 function in 10/11/12 instances is : %0.5f, Line-1771\n", h12t2 - h12t1);
 
     t1 = omp_get_wtime();
 /*  SOLVE C*X=D AND MODIFY F */
@@ -1971,7 +1971,7 @@ L40:
 	h__[i__] -= ddot_sl__(mc, &g[i__ + g_dim1], *lg, &x[1], 1);
     }
     t2 = omp_get_wtime();
-    printf("Time taken inside lsei after 10/11/12 instance of h12: %0.5f\n", t2 - t1); 
+    //printf("Time taken inside lsei after 10/11/12 instance of h12: %0.5f\n", t2 - t1); 
     
     lsi_(&w[ie], &w[if__], &w[ig], &h__[1], me, me, mg, mg, &l, &x[mc1], xnrm,
 	     &w[mc1], &jw[1], mode, g_temp_matrix, e_temp_matrix);
